@@ -1,0 +1,27 @@
+data:
+  history_csv: data/raw/history.csv
+  frequency: 1h
+  horizon_steps: 24
+forecast:
+  validation_days: 14
+  random_seed: 42
+  candidates: [seasonal_naive, gradient_boosting]
+scenarios:
+  count: 80
+  residual_block_steps: 4
+optimization:
+  capacity_kwh: 13.5
+  charge_power_kw: 5.0
+  discharge_power_kw: 5.0
+  eta_charge: 0.96
+  eta_discharge: 0.96
+  initial_soc_kwh: 6.0
+  terminal_soc_kwh: 6.0
+  degradation_eur_per_kwh: 0.01
+  export_price_ratio: 0.75
+  cvar_alpha: 0.90
+  cvar_weight: 0.20
+backtest:
+  enabled: true
+  days: 7
+output_dir: artifacts
