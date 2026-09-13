@@ -9,11 +9,17 @@ description = "Forecast-aware stochastic scheduling for behind-the-meter batteri
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.26", "pandas>=2.1", "scipy>=1.11", "scikit-learn>=1.4",
-  "PyYAML>=6.0", "typer>=0.12", "joblib>=1.3"
+  "PyYAML>=6.0", "typer>=0.12", "joblib>=1.3", "holidays>=0.47"
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.5"]
+dev = ["pytest>=8.0", "ruff>=0.5", "matplotlib>=3.8"]
+# lightgbm enables the "lightgbm_quantile" forecast candidate; not required otherwise
+# (and needs libomp on macOS, which doesn't always have a prebuilt bottle).
+lightgbm = ["lightgbm>=4.0"]
+# entsoe-py: for scripts/entsoe_client.py, used by scripts/prepare_real_data.py and
+# scripts/prepare_counterfactual_data.py to build real-market history CSVs.
+research = ["entsoe-py>=0.6"]
 
 [project.scripts]
 battery-schedule = "battery_schedule.cli:app"

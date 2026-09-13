@@ -1,8 +1,9 @@
-from dataclasses import asdict
 import numpy as np
 import pandas as pd
 from scipy.optimize import linprog
+
 from .config import BatteryConfig
+
 
 def solve_schedule(scenarios: np.ndarray, pv_kw: np.ndarray, export_prices: np.ndarray, cfg: BatteryConfig, dt_h: float = 1.0, cvar_alpha: float = .9, cvar_weight: float = .2) -> pd.DataFrame:
     """Scenario LP with non-anticipative battery actions and CVaR of grid cost."""
@@ -11,10 +12,18 @@ def solve_schedule(scenarios: np.ndarray, pv_kw: np.ndarray, export_prices: np.n
     imp0=n_action; exp0=imp0+S*T; cost0=exp0+S*T; z=cost0+S; u0=z+1; N=u0+S
     c=np.zeros(N); c[:T]=cfg.degradation_eur_per_kwh*dt_h; c[T:2*T]=cfg.degradation_eur_per_kwh*dt_h
     c[cost0:cost0+S]=(1-cvar_weight)/S; c[z]=cvar_weight; c[u0:]=cvar_weight/(S*(1-cvar_alpha))
-    max_grid_flow = float(np.max(scenarios[..., 0]) + np.max(pv_kw) + cfg.charge_power_kw + cfg.discharge_power_kw)
+    # Tight, separate bounds per flow direction (not one shared, much looser bound for both):
+    # importing only ever needs to cover load plus charging; exporting only ever needs to
+    # cover PV plus discharging. A single bloated shared bound left HiGHS with badly scaled
+    # variables on days where PV vastly exceeds load, occasionally misreporting a feasible
+    # problem as infeasible.
+    import_bound = float(np.max(scenarios[..., 0]) + cfg.charge_power_kw)
+    export_bound = float(np.max(pv_kw) + cfg.discharge_power_kw)
     bounds=[]
     bounds += [(0,cfg.charge_power_kw)]*T + [(0,cfg.discharge_power_kw)]*T + [(0,cfg.capacity_kwh)]*T
-    bounds += [(0,max_grid_flow)]*(2*S*T) + [(0,None)]*S + [(None,None)] + [(0,None)]*S
+    # cost_s (import cost minus export revenue) is free, not >= 0: a scenario where PV/export
+    # dominates load is a net *earner* for the day, and a >=0 floor there wrongly rules that out.
+    bounds += [(0,import_bound)]*(S*T) + [(0,export_bound)]*(S*T) + [(None,None)]*S + [(None,None)] + [(0,None)]*S
     Aeq=[]; beq=[]
     # State of charge dynamics.
     for t in range(T):

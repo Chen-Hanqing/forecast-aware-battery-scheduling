@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -15,8 +16,15 @@ def read_history(path: str | Path, frequency: str) -> pd.DataFrame:
         raise ValueError("History must have a regular frequency with no gaps")
     df["pv_kw"] = df.get("pv_kw", 0.0)
     df["export_price_eur_kwh"] = df.get("export_price_eur_kwh", np.nan)
-    if (df[["load_kw", "pv_kw", "import_price_eur_kwh"]] < 0).any().any():
-        raise ValueError("Load, PV, and import price must be non-negative")
+    # Optional: real system-wide residual load (actual load - wind - solar), the true
+    # day-ahead-price driver, when available (see scripts/prepare_real_data.py). Absent
+    # for synthetic/counterfactual data, in which case forecast.py falls back to using
+    # this household's own load/PV as price's exogenous drivers.
+    df["residual_load_mw"] = df.get("residual_load_mw", np.nan)
+    if (df[["load_kw", "pv_kw"]] < 0).any().any():
+        raise ValueError("Load and PV must be non-negative")
+    # Day-ahead prices can legitimately go negative (e.g. high-renewables, low-demand
+    # hours on the German market), so import/export prices aren't checked here.
     return df
 
 def make_demo_data(path: str | Path, days: int = 120, seed: int = 42) -> None:

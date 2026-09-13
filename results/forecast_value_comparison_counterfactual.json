@@ -1,0 +1,30 @@
+{
+  "days": 30,
+  "baseline_no_battery_eur": -91.61198493250001,
+  "oracle_perfect_foresight_eur": -107.93929259565903,
+  "oracle_vs_baseline_pct": 17.822239825050225,
+  "seasonal_naive": {
+    "mean_mae_load_kw": 0.09553888888889081,
+    "mean_mae_price_eur_kwh": 0.03412201388888889,
+    "mean_kendall_tau_price": 0.5355884663009277,
+    "realised_cost_eur": -102.1977784155428,
+    "vs_baseline_pct": 11.5550312449211,
+    "gap_to_oracle_eur": 5.741514180116226
+  },
+  "gradient_boosting": {
+    "mean_mae_load_kw": 0.10752889848119516,
+    "mean_mae_price_eur_kwh": 0.030233830024920628,
+    "mean_kendall_tau_price": 0.5175056056498593,
+    "realised_cost_eur": -102.06045519048507,
+    "vs_baseline_pct": 11.405134672808948,
+    "gap_to_oracle_eur": 5.878837405173954
+  },
+  "lear": {
+    "mean_mae_load_kw": 0.16260517406388736,
+    "mean_mae_price_eur_kwh": 0.03760318605664045,
+    "mean_kendall_tau_price": 0.04035703161177171,
+    "realised_cost_eur": -100.85876067695496,
+    "vs_baseline_pct": 10.093412724621142,
+    "gap_to_oracle_eur": 7.080531918704068
+  }
+}

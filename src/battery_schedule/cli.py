@@ -1,5 +1,7 @@
 from pathlib import Path
+
 import typer
+
 from .config import load_config
 from .data import make_demo_data
 from .pipeline import run

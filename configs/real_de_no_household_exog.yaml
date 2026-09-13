@@ -1,0 +1,32 @@
+data:
+  history_csv: data/raw/history_de_real.csv
+  frequency: 1h
+  horizon_steps: 24
+forecast:
+  validation_days: 14
+  random_seed: 42
+  candidates: [seasonal_naive, gradient_boosting, lear]  # lightgbm_quantile skipped: libomp unavailable
+  holiday_country: DE
+  lookback_days: 120
+  household_price_exog: false  # ablation of configs/real_de.yaml: drop household's own load/PV as
+                                # price exogenous features, keep only residual_load_mw — tests whether
+                                # they add anything once the true market fundamental is available
+scenarios:
+  count: 80
+  residual_block_steps: 4
+optimization:
+  capacity_kwh: 13.5
+  charge_power_kw: 5.0
+  discharge_power_kw: 5.0
+  eta_charge: 0.96
+  eta_discharge: 0.96
+  initial_soc_kwh: 6.0
+  terminal_soc_kwh: 6.0
+  degradation_eur_per_kwh: 0.01
+  export_price_ratio: 0.75
+  cvar_alpha: 0.90
+  cvar_weight: 0.20
+backtest:
+  enabled: true
+  days: 30
+output_dir: artifacts_real_no_household_exog

@@ -1,0 +1,25 @@
+{
+  "candidate": "gradient_boosting",
+  "baseline_no_battery_eur": 5.172961407499905,
+  "days": 30,
+  "cvar_weight_0.0": {
+    "total_eur": 3.4871736668852,
+    "vs_baseline_pct": -32.58844611078294
+  },
+  "cvar_weight_0.2": {
+    "total_eur": 3.59485734080394,
+    "vs_baseline_pct": -30.50678213852486
+  },
+  "cvar_weight_0.5": {
+    "total_eur": 3.400907564870274,
+    "vs_baseline_pct": -34.25608086038411
+  },
+  "cvar_weight_0.8": {
+    "total_eur": 3.3418882316778045,
+    "vs_baseline_pct": -35.39700051052689
+  },
+  "cvar_weight_1.0": {
+    "total_eur": 3.3832892720754524,
+    "vs_baseline_pct": -34.59666512937319
+  }
+}

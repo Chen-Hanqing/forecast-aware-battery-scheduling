@@ -1,11 +1,13 @@
 data:
-  history_csv: data/raw/history.csv
+  history_csv: data/raw/history_de_real.csv
   frequency: 1h
   horizon_steps: 24
 forecast:
   validation_days: 14
   random_seed: 42
-  candidates: [seasonal_naive, gradient_boosting, lear]
+  candidates: [seasonal_naive, gradient_boosting, lear]  # lightgbm_quantile skipped: libomp unavailable
+  holiday_country: DE
+  lookback_days: 120
 scenarios:
   count: 80
   residual_block_steps: 4
@@ -23,5 +25,5 @@ optimization:
   cvar_weight: 0.20
 backtest:
   enabled: true
-  days: 7
-output_dir: artifacts
+  days: 30
+output_dir: artifacts_real
