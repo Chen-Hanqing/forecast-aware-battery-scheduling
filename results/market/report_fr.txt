@@ -1,0 +1,72 @@
+1165 evaluated days, 2019-05-17 to 2025-09-30 (every 2 day(s)); 1 MW / 2 MWh; block bootstrap 14 days
+
+Perfect-foresight oracle, net of degradation: 34,811 EUR/MW/year
+
+1. Revenue and risk (EUR per MW; net of the modelled degradation cost unless stated)
+                                            net EUR/MW/yr    gross  capture daily std   p5 day worst day loss days   max DD cycles/day
+   Seasonal naive                                  21,981   30,853    63.1%      81.9    -15.0    -103.0     17.2%      160       1.11
+   Gradient boosting                               18,521   26,837    53.2%      76.2    -21.1    -114.4     20.6%      182       1.04
+   Lasso-AR                                          -655    3,550    -1.9%      66.6    -93.5    -606.7     33.8%    8,612       0.53
+   Lasso-AR + hour dummies                         17,638   25,178    50.7%      70.0    -17.1    -247.0     18.1%      721       0.95
+   Gradient boosting + same-hour lags              20,527   29,196    59.0%      80.3    -16.7     -99.2     18.0%      139       1.09
+   Lasso-AR + hour dummies + same-hour lags        23,132   31,282    66.5%      83.8     -7.6    -122.4     13.3%      124       1.02
+
+2. By calendar year (EUR/MW/year; capture in brackets)
+                                                       2019            2020            2021            2022            2023            2024            2025
+   oracle                                             5,335           5,496          26,683          73,016          36,741          37,949          51,723
+   Seasonal naive                              1,960 ( 37%)    2,507 ( 46%)   15,767 ( 59%)   43,878 ( 60%)   24,568 ( 67%)   24,553 ( 65%)   36,930 ( 71%)
+   Gradient boosting                           1,972 ( 37%)    1,864 ( 34%)   14,588 ( 55%)   34,428 ( 47%)   19,193 ( 52%)   22,008 ( 58%)   33,089 ( 64%)
+   Lasso-AR                                        3 (  0%)     -465 ( -8%)   -3,918 (-15%)   -8,835 (-12%)     -365 ( -1%)      579 (  2%)   11,768 ( 23%)
+   Lasso-AR + hour dummies                     2,215 ( 42%)    1,932 ( 35%)   14,054 ( 53%)   29,864 ( 41%)   20,184 ( 55%)   20,742 ( 55%)   32,469 ( 63%)
+   Gradient boosting + same-hour lags          2,235 ( 42%)    1,958 ( 36%)   14,863 ( 56%)   39,225 ( 54%)   22,155 ( 60%)   23,848 ( 63%)   36,633 ( 71%)
+   Lasso-AR + hour dummies + same-hour lags    2,946 ( 55%)    3,019 ( 55%)   17,648 ( 66%)   44,791 ( 61%)   23,869 ( 65%)   26,600 ( 70%)   39,685 ( 77%)
+
+3. Paired daily revenue differences a - b (EUR/MW/year, 95% block-bootstrap CI; >0 = a earns more)
+   Seasonal naive                           - Gradient boosting                          +3,460  [  +2,305,   +4,740]  (excludes 0)
+   Seasonal naive                           - Lasso-AR                                  +22,636  [ +17,858,  +27,884]  (excludes 0)
+   Seasonal naive                           - Lasso-AR + hour dummies                    +4,342  [  +2,552,   +6,662]  (excludes 0)
+   Seasonal naive                           - Gradient boosting + same-hour lags         +1,454  [    +511,   +2,561]  (excludes 0)
+   Seasonal naive                           - Lasso-AR + hour dummies + same-hour lags   -1,152  [  -2,253,      -19]  (excludes 0)
+   Gradient boosting                        - Lasso-AR                                  +19,176  [ +15,066,  +23,769]  (excludes 0)
+   Gradient boosting                        - Lasso-AR + hour dummies                      +883  [    -633,   +2,851]  (includes 0)
+   Gradient boosting                        - Gradient boosting + same-hour lags         -2,006  [  -2,979,   -1,099]  (excludes 0)
+   Gradient boosting                        - Lasso-AR + hour dummies + same-hour lags   -4,611  [  -6,095,   -3,272]  (excludes 0)
+   Lasso-AR                                 - Lasso-AR + hour dummies                   -18,293  [ -22,321,  -14,524]  (excludes 0)
+   Lasso-AR                                 - Gradient boosting + same-hour lags        -21,182  [ -25,995,  -16,761]  (excludes 0)
+   Lasso-AR                                 - Lasso-AR + hour dummies + same-hour lags  -23,787  [ -28,988,  -18,987]  (excludes 0)
+   Lasso-AR + hour dummies                  - Gradient boosting + same-hour lags         -2,889  [  -4,609,   -1,463]  (excludes 0)
+   Lasso-AR + hour dummies                  - Lasso-AR + hour dummies + same-hour lags   -5,494  [  -7,369,   -3,889]  (excludes 0)
+   Gradient boosting + same-hour lags       - Lasso-AR + hour dummies + same-hour lags   -2,605  [  -3,564,   -1,678]  (excludes 0)
+
+4. Forecast quality (k = 3)
+                                            MAE EUR/MWh     tau   top-3   bot-3
+   Seasonal naive                                 29.86   0.629    0.58    0.56
+   Gradient boosting                              22.30   0.577    0.53    0.52
+   Lasso-AR                                       30.14   0.175    0.14    0.28
+   Lasso-AR + hour dummies                        26.80   0.550    0.53    0.49
+   Gradient boosting + same-hour lags             19.92   0.601    0.56    0.51
+   Lasso-AR + hour dummies + same-hour lags       21.55   0.637    0.60    0.56
+
+5. Across forecasters: Spearman correlation of each metric with total revenue (n = number of forecasters)
+   neg_mae  rho = +0.54
+   tau      rho = +1.00
+   top_k    rho = +0.94
+
+6. Same day, across forecasters: day-demeaned correlation of each metric with revenue (block bootstrap over days)
+   corr(tau    , revenue)  r = +0.527  CI [+0.472, +0.588]
+   corr(neg_mae, revenue)  r = +0.278  CI [+0.152, +0.391]
+   corr(top_k  , revenue)  r = +0.449  CI [+0.405, +0.501]
+   corr(tau) - corr(neg_mae) = +0.249  CI [+0.116, +0.397]
+   corr(top_k) - corr(neg_mae) = +0.171  CI [+0.032, +0.326]
+
+7. Where the forecast puts the day's peak (share of days the highest predicted price falls in each window)
+                                              midday 11-14h  evening 16-20h    morning 6-9h
+   actual                                                0%             72%             22%
+   Seasonal naive                                        0%             72%             22%
+   Gradient boosting                                     1%             80%             15%
+   Lasso-AR                                             28%             33%              2%
+   Lasso-AR + hour dummies                               0%             92%              5%
+   Gradient boosting + same-hour lags                    1%             74%             19%
+   Lasso-AR + hour dummies + same-hour lags              0%             75%             21%
+
+Wrote results/market/market_report_fr.json

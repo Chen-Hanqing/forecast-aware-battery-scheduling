@@ -12,6 +12,7 @@ class BatteryConfig:
     export_price_ratio: float = 0.75
     cvar_alpha: float = 0.90
     cvar_weight: float = 0.20
+    max_cycles_per_day: float | None = None  # delivered energy per day / capacity; None = unlimited
 
 def load_config(path: str | Path) -> dict:
     with open(path, encoding="utf-8") as f:

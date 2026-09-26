@@ -1,0 +1,493 @@
+{
+  "days_evaluated": 2329,
+  "first_day": "2019-05-17",
+  "last_day": "2025-09-30",
+  "stride_days": 1,
+  "power_mw": 1.0,
+  "capacity_mwh": 2.0,
+  "k": 3,
+  "oracle_eur_per_mw_year": 48318.648679576974,
+  "summary": {
+    "seasonal_naive": {
+      "net_eur_per_mw_year": 35460.733968569046,
+      "gross_eur_per_mw_year": 44623.10044143805,
+      "capture_ratio": 0.7338933297519425,
+      "daily_std_eur_per_mw": 125.72324938207545,
+      "p5_day_eur_per_mw": -12.756553182608679,
+      "worst_day_eur_per_mw": -108.19337391304354,
+      "share_losing_days": 0.1382567625590382,
+      "max_drawdown_eur_per_mw": 158.78451720226803,
+      "cycles_per_day": 1.150706741090597
+    },
+    "gradient_boosting": {
+      "net_eur_per_mw_year": 28706.939006067667,
+      "gross_eur_per_mw_year": 37514.73777743972,
+      "capture_ratio": 0.594117174021908,
+      "daily_std_eur_per_mw": 118.0337894352995,
+      "p5_day_eur_per_mw": -18.503006275992277,
+      "worst_day_eur_per_mw": -239.00556521739108,
+      "share_losing_days": 0.2013739802490339,
+      "max_drawdown_eur_per_mw": 433.5973504120957,
+      "cycles_per_day": 1.1061763847144699
+    },
+    "lasso_ar": {
+      "net_eur_per_mw_year": 9883.520149335813,
+      "gross_eur_per_mw_year": 14429.786512289646,
+      "capture_ratio": 0.20454876987305562,
+      "daily_std_eur_per_mw": 93.96525534355452,
+      "p5_day_eur_per_mw": -71.76190942608687,
+      "worst_day_eur_per_mw": -491.3647749565217,
+      "share_losing_days": 0.2674967797337913,
+      "max_drawdown_eur_per_mw": 5854.998402903588,
+      "cycles_per_day": 0.5709681408329755
+    },
+    "lasso_ar_hourly": {
+      "net_eur_per_mw_year": 28684.127400507135,
+      "gross_eur_per_mw_year": 36965.9535856422,
+      "capture_ratio": 0.593645066332974,
+      "daily_std_eur_per_mw": 112.76112816483487,
+      "p5_day_eur_per_mw": -15.182915302835568,
+      "worst_day_eur_per_mw": -263.96133913043474,
+      "share_losing_days": 0.1799055388578789,
+      "max_drawdown_eur_per_mw": 611.736961814735,
+      "cycles_per_day": 1.0401191927866038
+    },
+    "gradient_boosting_aligned": {
+      "net_eur_per_mw_year": 32765.058284694143,
+      "gross_eur_per_mw_year": 41918.17759121073,
+      "capture_ratio": 0.6781037793911457,
+      "daily_std_eur_per_mw": 120.8932026558368,
+      "p5_day_eur_per_mw": -14.074188920982968,
+      "worst_day_eur_per_mw": -140.94101162948962,
+      "share_losing_days": 0.16358952340060112,
+      "max_drawdown_eur_per_mw": 182.3347093534976,
+      "cycles_per_day": 1.149545384285101
+    },
+    "lasso_ar_aligned": {
+      "net_eur_per_mw_year": 37428.89789475536,
+      "gross_eur_per_mw_year": 46143.47560195829,
+      "capture_ratio": 0.774626338227368,
+      "daily_std_eur_per_mw": 129.27292821000785,
+      "p5_day_eur_per_mw": -7.579311304347804,
+      "worst_day_eur_per_mw": -93.5019826086956,
+      "share_losing_days": 0.11893516530699871,
+      "max_drawdown_eur_per_mw": 93.50198260869729,
+      "cycles_per_day": 1.0944686990124517
+    }
+  },
+  "by_year": {
+    "oracle": {
+      "2019": 7952.871925271214,
+      "2020": 9574.446680667721,
+      "2021": 34695.18480801513,
+      "2022": 95573.77977872215,
+      "2023": 47253.63429150852,
+      "2024": 58775.31996421995,
+      "2025": 76561.0326786046
+    },
+    "seasonal_naive": {
+      "2019": {
+        "eur_per_mw_year": 2571.2951614181857,
+        "capture_ratio": 0.3233165560289716
+      },
+      "2020": {
+        "eur_per_mw_year": 4444.800905224209,
+        "capture_ratio": 0.46423579904611567
+      },
+      "2021": {
+        "eur_per_mw_year": 21935.94386586013,
+        "capture_ratio": 0.632247500258093
+      },
+      "2022": {
+        "eur_per_mw_year": 69260.64758493766,
+        "capture_ratio": 0.7246825200938358
+      },
+      "2023": {
+        "eur_per_mw_year": 34853.79840840833,
+        "capture_ratio": 0.7375897945414023
+      },
+      "2024": {
+        "eur_per_mw_year": 45687.60304287831,
+        "capture_ratio": 0.7773263177587308
+      },
+      "2025": {
+        "eur_per_mw_year": 64624.0684147135,
+        "capture_ratio": 0.8440856419217692
+      }
+    },
+    "gradient_boosting": {
+      "2019": {
+        "eur_per_mw_year": 1838.1047751212252,
+        "capture_ratio": 0.2311246543881116
+      },
+      "2020": {
+        "eur_per_mw_year": 2491.1328836108964,
+        "capture_ratio": 0.26018557173030965
+      },
+      "2021": {
+        "eur_per_mw_year": 16882.6906806503,
+        "capture_ratio": 0.4866003963970854
+      },
+      "2022": {
+        "eur_per_mw_year": 57515.78767301328,
+        "capture_ratio": 0.6017946324418382
+      },
+      "2023": {
+        "eur_per_mw_year": 27633.876212597366,
+        "capture_ratio": 0.5847989604804466
+      },
+      "2024": {
+        "eur_per_mw_year": 36877.68376477239,
+        "capture_ratio": 0.627434844884248
+      },
+      "2025": {
+        "eur_per_mw_year": 54163.87780818796,
+        "capture_ratio": 0.707460125773935
+      }
+    },
+    "lasso_ar": {
+      "2019": {
+        "eur_per_mw_year": 971.8493350234855,
+        "capture_ratio": 0.12220105443108124
+      },
+      "2020": {
+        "eur_per_mw_year": -15.71107639364873,
+        "capture_ratio": -0.0016409383139990542
+      },
+      "2021": {
+        "eur_per_mw_year": 5010.167123659739,
+        "capture_ratio": 0.14440525829112494
+      },
+      "2022": {
+        "eur_per_mw_year": 19090.75017176561,
+        "capture_ratio": 0.1997488245831189
+      },
+      "2023": {
+        "eur_per_mw_year": 7381.618750306243,
+        "capture_ratio": 0.15621272016389054
+      },
+      "2024": {
+        "eur_per_mw_year": 12011.591498202406,
+        "capture_ratio": 0.2043645445999202
+      },
+      "2025": {
+        "eur_per_mw_year": 25328.011131899984,
+        "capture_ratio": 0.33082117946637934
+      }
+    },
+    "lasso_ar_hourly": {
+      "2019": {
+        "eur_per_mw_year": 2307.60427980948,
+        "capture_ratio": 0.2901598694776899
+      },
+      "2020": {
+        "eur_per_mw_year": 2885.1441930100095,
+        "capture_ratio": 0.30133795604455754
+      },
+      "2021": {
+        "eur_per_mw_year": 18543.11642117203,
+        "capture_ratio": 0.5344579233049158
+      },
+      "2022": {
+        "eur_per_mw_year": 54940.20222309265,
+        "capture_ratio": 0.5748459708331441
+      },
+      "2023": {
+        "eur_per_mw_year": 28347.68189123631,
+        "capture_ratio": 0.5999047970862718
+      },
+      "2024": {
+        "eur_per_mw_year": 37554.08867401366,
+        "capture_ratio": 0.6389431601031705
+      },
+      "2025": {
+        "eur_per_mw_year": 52409.58575427187,
+        "capture_ratio": 0.6845464842968089
+      }
+    },
+    "gradient_boosting_aligned": {
+      "2019": {
+        "eur_per_mw_year": 2825.562176841203,
+        "capture_ratio": 0.35528827867359924
+      },
+      "2020": {
+        "eur_per_mw_year": 3447.464172707759,
+        "capture_ratio": 0.3600692852223742
+      },
+      "2021": {
+        "eur_per_mw_year": 19716.351174472606,
+        "capture_ratio": 0.5682734155639321
+      },
+      "2022": {
+        "eur_per_mw_year": 63612.170588521774,
+        "capture_ratio": 0.6655818231297359
+      },
+      "2023": {
+        "eur_per_mw_year": 30594.799413534984,
+        "capture_ratio": 0.6474591821825834
+      },
+      "2024": {
+        "eur_per_mw_year": 43568.64926363012,
+        "capture_ratio": 0.7412745569084602
+      },
+      "2025": {
+        "eur_per_mw_year": 61805.337946604915,
+        "capture_ratio": 0.807268864907523
+      }
+    },
+    "lasso_ar_aligned": {
+      "2019": {
+        "eur_per_mw_year": 2702.876583854519,
+        "capture_ratio": 0.3398617014396776
+      },
+      "2020": {
+        "eur_per_mw_year": 4743.016803728243,
+        "capture_ratio": 0.4953828625214575
+      },
+      "2021": {
+        "eur_per_mw_year": 24671.333251327043,
+        "capture_ratio": 0.7110881059675919
+      },
+      "2022": {
+        "eur_per_mw_year": 73390.23594749342,
+        "capture_ratio": 0.7678909018499704
+      },
+      "2023": {
+        "eur_per_mw_year": 36794.737546737255,
+        "capture_ratio": 0.7786647122155697
+      },
+      "2024": {
+        "eur_per_mw_year": 48307.8425710612,
+        "capture_ratio": 0.8219069262484503
+      },
+      "2025": {
+        "eur_per_mw_year": 65618.23430725664,
+        "capture_ratio": 0.8570709146873096
+      }
+    }
+  },
+  "paired_revenue_diff": {
+    "seasonal_naive - gradient_boosting": {
+      "eur_per_mw_year": 6753.794962501377,
+      "ci95": [
+        5511.817569049641,
+        8033.284127279441
+      ]
+    },
+    "seasonal_naive - lasso_ar": {
+      "eur_per_mw_year": 25577.21381923323,
+      "ci95": [
+        21828.134044540202,
+        29520.190827227103
+      ]
+    },
+    "seasonal_naive - lasso_ar_hourly": {
+      "eur_per_mw_year": 6776.606568061908,
+      "ci95": [
+        4936.18803810515,
+        8829.498123218127
+      ]
+    },
+    "seasonal_naive - gradient_boosting_aligned": {
+      "eur_per_mw_year": 2695.675683874903,
+      "ci95": [
+        1980.3527760358825,
+        3519.808774319188
+      ]
+    },
+    "seasonal_naive - lasso_ar_aligned": {
+      "eur_per_mw_year": -1968.16392618632,
+      "ci95": [
+        -2616.66674237442,
+        -1330.0120756538452
+      ]
+    },
+    "gradient_boosting - lasso_ar": {
+      "eur_per_mw_year": 18823.418856731856,
+      "ci95": [
+        15649.590775381974,
+        22161.90876163489
+      ]
+    },
+    "gradient_boosting - lasso_ar_hourly": {
+      "eur_per_mw_year": 22.81160556053071,
+      "ci95": [
+        -1318.8652871720433,
+        1496.7462368836811
+      ]
+    },
+    "gradient_boosting - gradient_boosting_aligned": {
+      "eur_per_mw_year": -4058.119278626474,
+      "ci95": [
+        -5291.874075623992,
+        -2814.4909144962244
+      ]
+    },
+    "gradient_boosting - lasso_ar_aligned": {
+      "eur_per_mw_year": -8721.958888687697,
+      "ci95": [
+        -10184.672385318394,
+        -7342.694746668077
+      ]
+    },
+    "lasso_ar - lasso_ar_hourly": {
+      "eur_per_mw_year": -18800.607251171325,
+      "ci95": [
+        -21594.65649147668,
+        -16101.575284481674
+      ]
+    },
+    "lasso_ar - gradient_boosting_aligned": {
+      "eur_per_mw_year": -22881.53813535833,
+      "ci95": [
+        -26778.8142600637,
+        -19249.659713110843
+      ]
+    },
+    "lasso_ar - lasso_ar_aligned": {
+      "eur_per_mw_year": -27545.37774541955,
+      "ci95": [
+        -31662.8164152802,
+        -23735.65245262523
+      ]
+    },
+    "lasso_ar_hourly - gradient_boosting_aligned": {
+      "eur_per_mw_year": -4080.9308841870056,
+      "ci95": [
+        -6103.788921154275,
+        -2231.788315119783
+      ]
+    },
+    "lasso_ar_hourly - lasso_ar_aligned": {
+      "eur_per_mw_year": -8744.770494248229,
+      "ci95": [
+        -10883.421675579595,
+        -6814.433272757605
+      ]
+    },
+    "gradient_boosting_aligned - lasso_ar_aligned": {
+      "eur_per_mw_year": -4663.839610061223,
+      "ci95": [
+        -5661.897331651454,
+        -3821.467939193719
+      ]
+    }
+  },
+  "forecast_quality": {
+    "seasonal_naive": {
+      "mae_eur_per_mwh": 35.27681873479319,
+      "tau": 0.6108264290889787,
+      "top_k_recall": 0.5746386145699155,
+      "bottom_k_recall": 0.5135251180764276
+    },
+    "gradient_boosting": {
+      "mae_eur_per_mwh": 27.353608227048003,
+      "tau": 0.5573550923483976,
+      "top_k_recall": 0.5387147559753828,
+      "bottom_k_recall": 0.45284099041076276
+    },
+    "lasso_ar": {
+      "mae_eur_per_mwh": 32.74388079219964,
+      "tau": 0.3005070022960314,
+      "top_k_recall": 0.2362959782453127,
+      "bottom_k_recall": 0.3366251610133104
+    },
+    "lasso_ar_hourly": {
+      "mae_eur_per_mwh": 30.3145493034695,
+      "tau": 0.5275521478624721,
+      "top_k_recall": 0.5591813367682841,
+      "bottom_k_recall": 0.4506941462716474
+    },
+    "gradient_boosting_aligned": {
+      "mae_eur_per_mwh": 24.997856344502008,
+      "tau": 0.5923634747728859,
+      "top_k_recall": 0.561041935022184,
+      "bottom_k_recall": 0.47488192357234865
+    },
+    "lasso_ar_aligned": {
+      "mae_eur_per_mwh": 25.94019562162333,
+      "tau": 0.622329445231447,
+      "top_k_recall": 0.6028338342636325,
+      "bottom_k_recall": 0.5252611993702591
+    }
+  },
+  "model_level_spearman_with_revenue": {
+    "neg_mae": 0.3142857142857143,
+    "tau": 1.0,
+    "top_k": 0.942857142857143
+  },
+  "day_demeaned_corr_with_revenue": {
+    "tau": {
+      "r": 0.5470911730433206,
+      "ci95": [
+        0.5044155770033557,
+        0.5887626410380221
+      ]
+    },
+    "neg_mae": {
+      "r": 0.20633714254810695,
+      "ci95": [
+        0.1497223398782892,
+        0.27529241677622196
+      ]
+    },
+    "top_k": {
+      "r": 0.408418729269568,
+      "ci95": [
+        0.3786785973842704,
+        0.4385962097652218
+      ]
+    },
+    "tau_minus_neg_mae": {
+      "diff": 0.3407540304952136,
+      "ci95": [
+        0.2756755135251779,
+        0.4009939334526779
+      ]
+    },
+    "top_k_minus_neg_mae": {
+      "diff": 0.20208158672146107,
+      "ci95": [
+        0.12477796150041259,
+        0.2695247201133453
+      ]
+    }
+  },
+  "peak_hour_share": {
+    "actual": {
+      "midday 11-14h": 0.0060111635895234005,
+      "evening 16-20h": 0.7398024903392014,
+      "morning 6-9h": 0.18634607127522543
+    },
+    "seasonal_naive": {
+      "midday 11-14h": 0.0060111635895234005,
+      "evening 16-20h": 0.738085015027909,
+      "morning 6-9h": 0.18763417775869473
+    },
+    "gradient_boosting": {
+      "midday 11-14h": 0.005152425933877201,
+      "evening 16-20h": 0.8595963933018463,
+      "morning 6-9h": 0.09403177329325892
+    },
+    "lasso_ar": {
+      "midday 11-14h": 0.24602833834263632,
+      "evening 16-20h": 0.44911979390296264,
+      "morning 6-9h": 0.016316015457277802
+    },
+    "lasso_ar_hourly": {
+      "midday 11-14h": 0.0012881064834693002,
+      "evening 16-20h": 0.9836839845427222,
+      "morning 6-9h": 0.008158007728638901
+    },
+    "gradient_boosting_aligned": {
+      "midday 11-14h": 0.013739802490339202,
+      "evening 16-20h": 0.7702876771146415,
+      "morning 6-9h": 0.14040360669815372
+    },
+    "lasso_ar_aligned": {
+      "midday 11-14h": 0.0025762129669386004,
+      "evening 16-20h": 0.8407041648776299,
+      "morning 6-9h": 0.10777157578359811
+    }
+  }
+}

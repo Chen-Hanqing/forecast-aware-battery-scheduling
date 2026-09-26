@@ -1,103 +1,79 @@
-"""Plot actual vs. forecast price for one specific backtest day, with each
-series' own top-4 (most expensive) and bottom-4 (cheapest) hours marked.
+"""Plot actual vs. forecast price for one backtest day, with the focus model's own top-4 and
+bottom-4 hours marked next to the real ones.
 
-Built to answer one question directly: which hours cause LEAR's Kendall's tau
-to collapse on its worst day in the real_de backtest (see
-results/tau_scan_lear.json, produced by scripts/diagnose_tau.py)? A battery's
-arbitrage decision depends on getting these top/bottom hours right, not on
-average error, so this is the hour-level view behind README.md's tau-vs-MAE
-discussion.
+Reads the per-day forecast and actual price vectors stored in a completed run's metrics file
+(pipeline._backtest()'s `daily` records), so nothing is refitted. By default it picks the day
+on which the focus model's Kendall's tau was lowest.
 
 Usage:
-    python -m scripts.plot_diagnostic_day --config configs/real_de.yaml --date 2018-01-15
+    python -m scripts.plot_diagnostic_day --metrics results/household/run_metrics_real_de.json --focus lasso_ar
 """
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import kendalltau
 
-from battery_schedule.config import load_config
-from battery_schedule.data import read_history
-from battery_schedule.forecast import select_and_forecast
+from scripts.style import COLORS, GRID, INK, INK_MUTED, LABELS, MODEL_ORDER
 
-IMAGES = "docs/images"
-LABELS = {"seasonal_naive": "Seasonal naive", "gradient_boosting": "Gradient boosting", "lear": "LEAR (Lasso)"}
-COLORS = {"seasonal_naive": "#7f7f7f", "gradient_boosting": "#2ca02c", "lear": "#1f77b4"}
+IMAGES = Path("docs/images")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="configs/real_de.yaml")
-    parser.add_argument("--date", default="2018-01-15", help="date of the backtest day to diagnose")
-    parser.add_argument("--focus", default="lear", help="candidate whose top/bottom-4 hours get marked")
+    parser.add_argument("--metrics", default="results/household/run_metrics_real_de.json")
+    parser.add_argument("--focus", default="lasso_ar", help="candidate whose top/bottom-4 hours get marked")
+    parser.add_argument("--date", default=None, help="backtest day; default = the focus model's lowest-tau day")
     args = parser.parse_args()
 
-    config = load_config(args.config)
-    history = read_history(config["data"]["history_csv"], config["data"]["frequency"])
-    horizon = config["data"]["horizon_steps"]
-    days = config["backtest"]["days"]
-    holiday_country = config["forecast"].get("holiday_country")
-    lookback_days = config["forecast"].get("lookback_days")
-
-    start = len(history) - days * horizon
-    origins = list(range(start, len(history) - horizon + 1, horizon))
-    origin = next(o for o in origins if str(history.index[o].date()) == args.date)
-    train, actual = history.iloc[:origin], history.iloc[origin:origin + horizon]
-    actual_price = actual["import_price_eur_kwh"].to_numpy()
-    hours = np.arange(horizon)
-
-    forecasts: dict[str, np.ndarray] = {}
-    stats: dict[str, tuple[float, float]] = {}
-    for name in LABELS:
-        validation_days = min(config["forecast"]["validation_days"], max(2, (len(train) - 192) // 24))
-        fc = select_and_forecast(train, horizon, validation_days, [name], holiday_country, lookback_days)
-        pred = fc.mean["import_price_eur_kwh"].to_numpy()
-        forecasts[name] = pred
-        tau, _ = kendalltau(pred, actual_price)
-        mae = float(np.mean(np.abs(pred - actual_price)))
-        stats[name] = (float(tau), mae)
+    daily = json.loads(Path(args.metrics).read_text())["backtest"]["daily"]
+    focus_rows = [d for d in daily if d["candidate"] == args.focus and d["kendall_tau"] is not None]
+    date = args.date or min(focus_rows, key=lambda d: d["kendall_tau"])["date"]
+    day = {d["candidate"]: d for d in daily if d["date"] == date}
+    actual = np.array(day[args.focus]["actual_price_eur_kwh"]) * 100
+    forecasts = {n: np.array(day[n]["forecast_price_eur_kwh"]) * 100 for n in MODEL_ORDER if n in day}
+    hours = np.arange(len(actual))
 
     def top_bottom(series: np.ndarray, k: int = 4) -> tuple[np.ndarray, np.ndarray]:
         order = np.argsort(series)
         return order[-k:], order[:k]
 
-    actual_top, actual_bottom = top_bottom(actual_price)
+    actual_top, actual_bottom = top_bottom(actual)
     focus_top, focus_bottom = top_bottom(forecasts[args.focus])
 
-    fig, ax = plt.subplots(figsize=(10, 5.5))
-    ax.plot(hours, actual_price, color="#111111", linewidth=2.5, label="Actual", zorder=5)
-    for name, label in LABELS.items():
-        style = "--" if name == args.focus else ":"
-        width = 2.0 if name == args.focus else 1.2
-        tau, mae = stats[name]
-        ax.plot(hours, forecasts[name], style, color=COLORS[name], linewidth=width,
-                 label=f"{label} (τ={tau:.2f}, MAE={mae:.4f})")
+    fig, ax = plt.subplots(figsize=(10.5, 5.6))
+    ax.plot(hours, actual, color=INK, linewidth=3.0, label="Actual", zorder=5)
+    for name, forecast in forecasts.items():
+        stats = f"τ={day[name]['kendall_tau']:.2f}, MAE={day[name]['mae_price_eur_kwh'] * 100:.2f} ct"
+        focus = name == args.focus
+        ax.plot(hours, forecast, "-" if focus else ":", color=COLORS[name], linewidth=2.4 if focus else 1.5,
+                label=f"{LABELS[name]} ({stats})", zorder=4)
+    ax.scatter(actual_top, actual[actual_top], marker="*", s=230, color="#e34948", edgecolor=INK, linewidth=0.6,
+               zorder=6, label="Actual top-4 (most expensive)")
+    ax.scatter(actual_bottom, actual[actual_bottom], marker="*", s=230, color="#ffffff", edgecolor=INK, linewidth=1.0,
+               zorder=6, label="Actual bottom-4 (cheapest)")
+    ax.scatter(focus_top, forecasts[args.focus][focus_top], marker="^", s=90, color=COLORS[args.focus],
+               edgecolor=INK, linewidth=0.6, zorder=6, label=f"{LABELS[args.focus]} top-4")
+    ax.scatter(focus_bottom, forecasts[args.focus][focus_bottom], marker="v", s=90, color=COLORS[args.focus],
+               edgecolor=INK, linewidth=0.6, zorder=6, label=f"{LABELS[args.focus]} bottom-4")
 
-    ax.scatter(actual_top, actual_price[actual_top], marker="*", s=220, color="#d62728",
-               edgecolor="black", linewidth=0.6, zorder=6, label="Actual top-4 (most expensive)")
-    ax.scatter(actual_bottom, actual_price[actual_bottom], marker="*", s=220, color="#2ca02c",
-               edgecolor="black", linewidth=0.6, zorder=6, label="Actual bottom-4 (cheapest)")
-    ax.scatter(focus_top, forecasts[args.focus][focus_top], marker="^", s=110, color=COLORS[args.focus],
-               edgecolor="black", linewidth=0.6, zorder=6, label=f"{LABELS[args.focus]} top-4 (thinks expensive)")
-    ax.scatter(focus_bottom, forecasts[args.focus][focus_bottom], marker="v", s=110, color=COLORS[args.focus],
-               edgecolor="black", linewidth=0.6, zorder=6, label=f"{LABELS[args.focus]} bottom-4 (thinks cheap)")
-
-    ax.set_xlabel("Hour of day")
-    ax.set_ylabel("Day-ahead price (EUR/kWh)")
-    ax.set_xticks(hours[::2])
-    ax.set_title(f"Why {LABELS[args.focus]}'s ranking breaks down on {args.date} "
-                 f"(τ={stats[args.focus][0]:.2f}, its worst day in this backtest)", fontsize=11)
-    ax.legend(fontsize=8, loc="upper left", ncol=2)
-    ax.grid(alpha=0.25)
+    ax.set_xlabel("Hour of day", color=INK_MUTED)
+    ax.set_ylabel("Day-ahead price (ct/kWh)", color=INK_MUTED)
+    ax.set_xticks(hours[::3])
+    ax.grid(axis="y", color=GRID, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    tau = day[args.focus]["kendall_tau"]
+    ax.set_title(f"{date}: {LABELS[args.focus]}'s lowest-τ day (τ={tau:.2f})", fontsize=12, color=INK, loc="left")
+    ax.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=3, frameon=False)
     fig.tight_layout()
-    out = f"{IMAGES}/diagnostic_day_{args.focus}_{args.date}.png"
-    fig.savefig(out, dpi=150)
+    out = IMAGES / f"diagnostic_day_{args.focus}_{date}.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
     print(f"Wrote {out}")
-    for name, (tau, mae) in stats.items():
-        print(f"{name}: tau={tau:.3f} mae={mae:.4f}")
     overlap_top = len(set(actual_top) & set(focus_top))
     overlap_bottom = len(set(actual_bottom) & set(focus_bottom))
     print(f"{args.focus}: {overlap_top}/4 actual-expensive hours also in its own top-4, "

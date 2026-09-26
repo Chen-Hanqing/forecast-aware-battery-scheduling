@@ -1,0 +1,36 @@
+# Second pass of configs/market_nl.yaml: only the two candidates with lags aligned to the target hour (plus seasonal naive as a consistency check).
+# NL day-ahead prices + residual load from ENTSO-E (see scripts/prepare_market_data.py).
+data:
+  history_csv: data/raw/market_nl.csv
+  frequency: 1h
+  horizon_steps: 24
+forecast:
+  validation_days: 14
+  random_seed: 42
+  candidates: [seasonal_naive, gradient_boosting_aligned, lasso_ar_aligned]
+  holiday_country: NL
+  lookback_days: 120
+  household_price_exog: false  # no household; price uses residual load only
+scenarios:
+  count: 30
+  residual_block_steps: 4
+optimization:
+  capacity_kwh: 2000
+  charge_power_kw: 1000
+  discharge_power_kw: 1000
+  eta_charge: 0.92          # 0.92 x 0.92 = 84.6% round trip
+  eta_discharge: 0.92
+  initial_soc_kwh: 1000
+  terminal_soc_kwh: 1000
+  degradation_eur_per_kwh: 0.005   # charged on both charge and discharge, i.e. 10 EUR per MWh of round-trip throughput
+  export_price_ratio: 1.0          # a merchant sells at the market price it buys at
+  cvar_alpha: 0.90
+  cvar_weight: 0.20
+  max_cycles_per_day: 1.5
+backtest:
+  enabled: true
+  days: 5000                # everything after the warm-up
+  mode: deterministic       # point forecast -> LP; the scenario layer is studied separately
+  stride_days: 2
+  workers: 8
+output_dir: artifacts_market_nl_aligned

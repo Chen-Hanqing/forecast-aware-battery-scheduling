@@ -1,19 +1,33 @@
 # results/
 
-Committed (not gitignored, unlike `artifacts*/`) copies of expensive-to-recompute
-outputs — mainly so a ~60–90 minute real-data backtest doesn't have to be re-run just
-to look up a number already computed once. `README.md`'s tables are transcribed from
-these files.
+Committed (not gitignored, unlike `artifacts*/`) copies of expensive-to-recompute outputs, split
+into the two studies described in the top-level [README](../README.md) and
+[docs/household_study.md](../docs/household_study.md).
 
-| File | Produced by | Schema |
+## `market/` — the three-market, six-year merchant-battery study
+
+| File | Produced by | Contents |
 |---|---|---|
-| `run_metrics_synthetic.json` | `battery-schedule run --config configs/default.yaml` | current: `backtest.candidates.<name>.*` |
-| `run_metrics_real_de.json` | `battery-schedule run --config configs/real_de.yaml` | current: `backtest.candidates.<name>.*` (now also `.mean_top4_expensive_recall`/`.mean_bottom4_cheap_recall`) plus a per-day `backtest.daily` list (`{date, candidate, mae_price_eur_kwh, kendall_tau, top4_expensive_recall, bottom4_cheap_recall, realised_cost_eur, baseline_cost_eur, oracle_cost_eur}`); analyzed by `scripts/analyze_daily.py`, see README.md §4.1 |
-| `forecast_value_comparison_counterfactual.json` | the now-retired standalone `scripts/forecast_value_comparison.py`, run on `configs/counterfactual.yaml` | **older, flat schema** (`<name>.*` directly, no `backtest` wrapper) — predates the refactor in `ITERATION_LOG.md` §8 that merged this logic into `pipeline._backtest()`. Re-running `battery-schedule run --config configs/counterfactual.yaml` today would produce the current nested schema instead; this file just hasn't been regenerated since. |
-| `tau_scan_lear.json` | `scripts/diagnose_tau.py --config configs/real_de.yaml --candidate lear` | per-backtest-day `{origin, date, tau, mae}`, written incrementally (safe to inspect mid-run); worst day (2018-01-15, τ=0.17) is visualized in `docs/images/diagnostic_day_lear_2018-01-15.png`, produced by `scripts/plot_diagnostic_day.py`, see README.md §4.1 |
-| `cvar_sensitivity_real_de.json` | `scripts/cvar_sensitivity.py --config configs/real_de.yaml --candidate gradient_boosting` | `{candidate, baseline_no_battery_eur, days, cvar_weight_<w>: {total_eur, vs_baseline_pct}}` for `w` in `[0.0, 0.2, 0.5, 0.8, 1.0]`; plotted by `scripts/plot_cvar_sensitivity.py` into `docs/images/cvar_sensitivity.png`, see README.md §4.4 |
+| `run_metrics_market_{de_lu,nl,fr}.json` | `battery-schedule run --config configs/market_<market>.yaml` | Main pass: naive, gradient boosting, Lasso-AR, Lasso-AR + hour dummies (France's config also includes the two aligned candidates in this one pass). Per-day records: metrics, forecast/actual price vectors, charge/discharge schedule, realised cost. |
+| `run_metrics_market_{de_lu,nl}_aligned.json` | `battery-schedule run --config configs/market_<market>_aligned.yaml` | Second pass: naive (repeated, as a consistency check against the main pass) plus gradient-boosting and Lasso-AR with lags aligned to the target hour. |
+| `report_{de_lu,nl,fr}.txt`, `market_report_{de_lu,nl,fr}.json` | `python -m scripts.market_report --metrics <run_metrics files> --out <json>` | Revenue and risk by candidate, by calendar year, paired daily-revenue differences (block-bootstrap CI), forecast quality (MAE/τ/recall), model-level and day-demeaned correlations with revenue, peak-hour placement. |
+| `oracle_net_{de_lu,nl,fr}.json` | `scripts.market_report.oracle_net_revenue` (called automatically) | Perfect-foresight net-of-degradation revenue per day, re-solved from the stored actual prices and checked against the stored gross oracle revenue. |
 
-When adding a new expensive result here, prefer the artifact's own natural output
-location as the source of truth during a run (`artifacts_real/`, etc. — gitignored,
-fine to regenerate) and copy or point the script at `results/` for what should survive
-across sessions.
+`scripts/run_market_study.sh` runs the aligned passes, merges each market's two files, and
+produces the reports and `docs/images/market_*.png` charts in one go.
+
+## `household/` — the 13.5 kWh / 5 kW household-scale study
+
+| File | Produced by | Contents |
+|---|---|---|
+| `run_metrics_real_de.json` | `battery-schedule run --config configs/real_de.yaml` | Aggregates per candidate, oracle and baseline, plus a per-day `backtest.daily` list: metrics, forecast and actual price vectors, charge/discharge schedule, realised cost of the CVaR, deterministic and risk-neutral schedules. |
+| `run_metrics_real_de_no_household_exog.json` | `battery-schedule run --config configs/real_de_no_household_exog.yaml` | Same schema; household load/PV dropped from price inputs. |
+| `run_metrics_counterfactual.json` | `battery-schedule run --config configs/counterfactual.yaml` | Same schema; constructed 2022-23 scenario. |
+| `run_metrics_synthetic.json` | `battery-schedule run --config configs/default.yaml` | Same schema; 7-day synthetic sanity check. |
+| `robustness_real_de.json`, `robustness_counterfactual.json`, `robustness_real_de_no_household_exog.json` | `python -m scripts.robustness --metrics <run_metrics file> --out <file>` | Block-bootstrap intervals, model-level and day-demeaned correlations, k-sensitivity, stochastic-layer split, forecast sharpness and cycling. The real-data file also holds the paired comparison against the ablation run (`--vs`). |
+| `cvar_sensitivity_real_de.json` | `python -m scripts.cvar_sensitivity --config configs/real_de.yaml --candidate gradient_boosting` | Total, worst-day and worst-10%-of-days cost, plus the daily costs, for CVaR weights 0, 0.2, 0.5, 0.8, 1. |
+
+When adding a new expensive result here, prefer the artifact's own natural output location as the
+source of truth during a run (`artifacts_market_*/`, `artifacts_real/`, etc. — gitignored, fine
+to regenerate) and copy or point the script at `results/market/` or `results/household/` for what
+should survive across sessions.

@@ -16,10 +16,10 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+from scripts.style import COLORS, LABELS
+
 IMAGES = Path("docs/images")
 
-LABELS = {"seasonal_naive": "Seasonal naive", "gradient_boosting": "Gradient boosting", "lear": "LEAR (Lasso)"}
-COLORS = {"seasonal_naive": "#7f7f7f", "gradient_boosting": "#2ca02c", "lear": "#1f77b4"}
 
 
 def plot_value_bars(backtest: dict, suffix: str, title_suffix: str) -> None:
@@ -46,27 +46,33 @@ def plot_value_bars(backtest: dict, suffix: str, title_suffix: str) -> None:
 
 def plot_mae_vs_tau(backtest: dict, suffix: str, title_suffix: str) -> None:
     names = [n for n in LABELS if n in backtest["candidates"]]
-    offsets = {"seasonal_naive": (8, 10), "lear": (8, -14), "gradient_boosting": (8, -4)}
-    fig, (ax_mae, ax_tau) = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
+    # Labels sit above a point, except the two lowest-cost-neighbours that would collide.
+    dy = {"gradient_boosting": -14}
+    fig, (ax_mae, ax_tau) = plt.subplots(1, 2, figsize=(10.5, 5), sharey=True)
 
-    for name in names:
-        r = backtest["candidates"][name]
-        ax_mae.scatter(r["mean_mae_price_eur_kwh"], r["vs_baseline_pct"], s=90, color=COLORS[name], zorder=3)
-        ax_mae.annotate(LABELS[name], (r["mean_mae_price_eur_kwh"], r["vs_baseline_pct"]),
-                         textcoords="offset points", xytext=offsets[name], fontsize=8.5)
-        ax_tau.scatter(r["mean_kendall_tau_price"], r["vs_baseline_pct"], s=90, color=COLORS[name], zorder=3)
-        ax_tau.annotate(LABELS[name], (r["mean_kendall_tau_price"], r["vs_baseline_pct"]),
-                         textcoords="offset points", xytext=offsets[name], fontsize=8.5)
-
-    ax_mae.axhline(0, color="#333333", linewidth=0.8)
-    ax_tau.axhline(0, color="#333333", linewidth=0.8)
-    ax_mae.set_xlabel("Price MAE (EUR/kWh) — lower is \"more accurate\"")
-    ax_tau.set_xlabel("Kendall's tau, forecast vs. realised price ranking — higher is better")
-    ax_mae.set_ylabel("Realised grid cost vs. no-battery baseline (%)")
+    for ax, key in ((ax_mae, "mean_mae_price_eur_kwh"), (ax_tau, "mean_kendall_tau_price")):
+        for name in names:
+            r = backtest["candidates"][name]
+            ax.scatter(r[key], r["vs_baseline_pct"], s=90, color=COLORS[name], zorder=3)
+        ax.axhline(0, color="#333333", linewidth=0.8)
+        ax.margins(x=0.18, y=0.12)
     ax_mae.invert_xaxis()  # so "better by this metric" reads left-to-right on both panels
-    ax_mae.set_title("MAE: doesn't rank models by\nrealised economic outcome", fontsize=10)
-    ax_tau.set_title("Kendall's tau: does", fontsize=10)
-    fig.suptitle(f"Point accuracy vs. rank accuracy as indicators of battery profit{title_suffix}", y=1.02)
+
+    for ax, key in ((ax_mae, "mean_mae_price_eur_kwh"), (ax_tau, "mean_kendall_tau_price")):
+        fig.canvas.draw()
+        for name in names:
+            r = backtest["candidates"][name]
+            frac = ax.transAxes.inverted().transform(ax.transData.transform((r[key], r["vs_baseline_pct"])))[0]
+            ha, dx = ("left", 8) if frac < 0.3 else ("right", -8) if frac > 0.7 else ("center", 0)
+            ax.annotate(LABELS[name], (r[key], r["vs_baseline_pct"]), textcoords="offset points",
+                        xytext=(dx, dy.get(name, 9)), fontsize=8.5, ha=ha)
+
+    ax_mae.set_xlabel("Price MAE (EUR/kWh), lower is more accurate")
+    ax_tau.set_xlabel("Kendall's tau, forecast vs. realised price ranking, higher is better")
+    ax_mae.set_ylabel("Realised grid cost vs. no-battery baseline (%)")
+    ax_mae.set_title("Price MAE", fontsize=10)
+    ax_tau.set_title("Kendall's tau", fontsize=10)
+    fig.suptitle(f"Point accuracy vs. rank accuracy as indicators of battery profit{title_suffix}", y=1.0)
     fig.tight_layout()
     fig.savefig(IMAGES / f"mae_vs_tau_scatter_{suffix}.png", dpi=150, bbox_inches="tight")
     plt.close(fig)

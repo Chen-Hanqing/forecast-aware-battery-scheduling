@@ -5,7 +5,7 @@ data:
 forecast:
   validation_days: 14
   random_seed: 42
-  candidates: [seasonal_naive, gradient_boosting, lear]  # lightgbm_quantile skipped: libomp unavailable
+  candidates: [seasonal_naive, gradient_boosting, lasso_ar, lear_asinh, lasso_ar_hourly]  # lightgbm_quantile skipped: libomp unavailable
   holiday_country: DE
   lookback_days: 120
   household_price_exog: false  # ablation of configs/real_de.yaml: drop household's own load/PV as

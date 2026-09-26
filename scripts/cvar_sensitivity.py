@@ -21,7 +21,11 @@ import numpy as np
 
 from battery_schedule.config import load_config
 from battery_schedule.data import read_history
-from battery_schedule.forecast import make_scenarios, select_and_forecast
+from battery_schedule.forecast import (
+    _seasonal_values,
+    make_scenarios,
+    select_and_forecast,
+)
 from battery_schedule.optimise import solve_schedule
 
 CVAR_WEIGHTS = [0.0, 0.2, 0.5, 0.8, 1.0]
@@ -43,15 +47,20 @@ def main() -> None:
 
     costs: dict[float, list[float]] = {w: [] for w in CVAR_WEIGHTS}
     baseline_costs: list[float] = []
+    pred_cache: dict = {}
 
     origins = range(start, len(history) - horizon + 1, horizon)
     for i, origin in enumerate(origins):
         train, actual = history.iloc[:origin], history.iloc[origin:origin + horizon]
         validation_days = min(config["forecast"]["validation_days"], max(2, (len(train) - 192) // 24))
-        fc = select_and_forecast(train, horizon, validation_days, [args.candidate], config["forecast"].get("holiday_country"), config["forecast"].get("lookback_days"))
+        fc = select_and_forecast(train, horizon, validation_days, [args.candidate], config["forecast"].get("holiday_country"), config["forecast"].get("lookback_days"), config["forecast"].get("household_price_exog", True), pred_cache)
         scenarios = make_scenarios(
             fc, min(30, config["scenarios"]["count"]), config["scenarios"]["residual_block_steps"], origin
         )
+        # Decision inputs come from train + the forecast only (same rule as pipeline._plan);
+        # the realised export price below is used only to price the schedule afterwards.
+        pv_plan = _seasonal_values(train, horizon, ["pv_kw"])[:, 0]
+        exp_plan = cfg.export_price_ratio * scenarios[..., 1]  # each scenario exports at its own price path
         exp = actual["export_price_eur_kwh"].fillna(actual.import_price_eur_kwh * cfg.export_price_ratio).to_numpy()
 
         net_no_battery = actual.load_kw.to_numpy() - actual.pv_kw.to_numpy()
@@ -62,7 +71,7 @@ def main() -> None:
         baseline_costs.append(float(baseline))
 
         for w in CVAR_WEIGHTS:
-            sched = solve_schedule(scenarios, actual.pv_kw.to_numpy(), exp, cfg, cvar_alpha=cfg.cvar_alpha, cvar_weight=w)
+            sched = solve_schedule(scenarios, pv_plan, exp_plan, cfg, cvar_alpha=cfg.cvar_alpha, cvar_weight=w)
             net = actual.load_kw.to_numpy() - actual.pv_kw.to_numpy() + sched.charge_kw.to_numpy() - sched.discharge_kw.to_numpy()
             realised = np.maximum(net, 0) * actual.import_price_eur_kwh.to_numpy() - np.maximum(-net, 0) * exp
             costs[w].append(float(realised.sum()))
@@ -73,9 +82,14 @@ def main() -> None:
     results = {"candidate": args.candidate, "baseline_no_battery_eur": baseline_total, "days": len(baseline_costs)}
     for w in CVAR_WEIGHTS:
         total = sum(costs[w])
+        daily = np.array(costs[w])
+        worst = np.sort(daily)[::-1][: max(1, int(np.ceil(0.1 * len(daily))))]
         results[f"cvar_weight_{w}"] = {
             "total_eur": total,
             "vs_baseline_pct": 100 * (total / baseline_total - 1),
+            "worst_day_eur": float(daily.max()),
+            "mean_worst_10pct_days_eur": float(worst.mean()),
+            "daily_costs_eur": [float(v) for v in daily],
         }
 
     out_path = output_dir / "cvar_sensitivity.json"

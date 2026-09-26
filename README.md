@@ -1,224 +1,343 @@
 # Forecast-aware battery scheduling
 
-An end-to-end, backtested extension of Gurobi's battery scheduling example. Instead of assuming next-day load and electricity prices are known, the pipeline forecasts them, turns the resulting uncertainty into scenarios, solves a risk-aware stochastic dispatch, and is graded on realised economic outcome (on synthetic data, on real German household and market data, and on a constructed real-price scenario), not on forecast error alone.
+An end-to-end, backtested study of a merchant, grid-connected battery trading day-ahead
+electricity. The pipeline forecasts next-day prices, turns forecast uncertainty into
+scenarios, solves a risk-aware stochastic dispatch, and is graded on what the schedule
+actually earns against real market prices, not on forecast error.
 
 ## Summary
 
-This project asks a practical question: does better electricity-price forecasting actually produce better battery decisions? It's an end-to-end forecast → scenario → CVaR-stochastic-dispatch pipeline, evaluated by walk-forward backtesting on synthetic data and two real German market regimes.
+A 1 MW / 2 MWh battery with no site load or PV — a price-taker that only ever trades the
+day-ahead spread — is walk-forward backtested against six years of ENTSO-E day-ahead prices
+(2019–2025) in three markets: Germany-Luxembourg, the Netherlands and France. At every origin,
+each of six forecasters is refit on data strictly before that day, forecasts the next 24 hours,
+and a schedule is optimised and priced against what actually happened; a perfect-foresight
+oracle (the same optimiser given the realised prices) sets the ceiling.
 
-The main result: forecast accuracy doesn't translate monotonically into economic value. In the real-data backtest, LEAR has the lowest price MAE but the worst battery economics; seasonal naive has the worst MAE but the best outcome. Aggregate rank-based metrics (Kendall's τ, extreme-hour recall) explain this reversal where MAE can't — but daily analysis shows no single metric reliably predicts one model's day-to-day value either.
+MAE is a poor guide to which forecaster earns more. Across all three markets, ranking
+forecasters by MAE gives close to no relationship with realised revenue (model-level Spearman
+ρ between +0.26 and +0.54), while ranking them by Kendall's τ or by recall of the day's most
+expensive hours orders them almost perfectly (ρ = 0.80–1.00). Comparing forecasters on the
+same day removes each day's difficulty and tells the same story: τ tracks revenue markedly
+better than MAE in every market (day-demeaned correlation +0.25 to +0.34 higher, 95% CI
+excluding zero all three times).
 
-So the finding is less "replace MAE with τ" than "forecast quality isn't one number for a storage decision": average error, overall ranking, and identification of price extremes are different, only partly overlapping things, and which matters most depends on the model, the regime, and the battery's own constraints. In the real-data backtest, a perfect-foresight oracle shows 75.5% of grid cost is theoretically avoidable — §4 measures how much of that a real forecaster actually captures.
+The forecasters that do well share two features: 24 hour-of-day dummies (so the model can place
+a morning peak, an evening peak, and a midday trough separately, rather than one smooth hump)
+and lags aligned to the *target* hour rather than to the forecast origin (the same-hour-
+yesterday, same-hour-last-week information a seasonal-naive baseline gets for free by
+construction). A linear model with neither loses badly to naive in all three markets — in France,
+outright unprofitable. A linear model with both edges past naive in every one of the 21
+market-years studied, by a modest but consistently positive margin (2–8% of oracle revenue; the
+three markets' 95% confidence intervals on the gap all exclude zero). Gradient boosting, given
+the same aligned lags, has the lowest MAE of any candidate in every market — and lower revenue
+than the linear model that beats it on τ, the same MAE-vs-value gap that motivates this project,
+now showing up *within* a single controlled feature comparison, not just between naive and ML.
 
-**Key result — real German backtest (§4.1):**
+A smaller, earlier household-scale study (13.5 kWh / 5 kW behind a real German meter,
+30-day backtests) motivated this one and is kept as a [companion study](docs/household_study.md);
+it is where the CVaR/scenario layer is actually tested (§4 there), since re-running it at
+market scale is too expensive to be worth it once the effect there tested out at zero.
 
-| | MAE (EUR/kWh) | Kendall's τ | Top-4 expensive-hour recall | Realised cost, 30 days |
-|---|---:|---:|---:|---:|
-| Seasonal naive | 0.0138 | **0.565** | 0.42 | **€2.87** |
-| Gradient boosting | 0.0091 | 0.550 | **0.45** | €3.59 |
-| LEAR (Lasso) | **0.0089** | 0.452 | 0.12 | €4.53 |
+### Key result: 1 MW / 2 MWh, three markets, 2019–2025
 
-The lowest-MAE model is the least profitable; the highest-MAE model is the most profitable.
+| Market | Evaluated days | Oracle (EUR/MW/yr) | Naive capture | Best candidate capture | Best − naive (EUR/MW/yr, 95% CI) |
+|---|---:|---:|---:|---:|---|
+| Germany-Luxembourg | 2,329 (daily) | 48,319 | 73.4% | 77.5% | +1,968 [+1,330, +2,617] |
+| Netherlands | 1,165 (every 2nd day) | 51,921 | 66.9% | 72.9% | +3,119 [+2,129, +4,208] |
+| France | 1,165 (every 2nd day) | 34,811 | 63.1% | 66.5% | +1,152 [+19, +2,253] |
+
+"Best candidate" is Lasso-AR with hour dummies and target-aligned lags in all three markets (§4.1).
 
 ## 1. Research questions
 
-1. A few 2025–26 papers ([arXiv:2604.12082](https://arxiv.org/abs/2604.12082), [arXiv:2511.13616](https://arxiv.org/abs/2511.13616)) report that MAE tracks a forecast's economic value to battery arbitrage poorly, and that rank correlation tracks it better. Does that hold here — and more specifically, is there a single metric that reliably predicts battery value across models and forecast origins, or does the metric–value relationship depend on which model, which day, and which economic outcome you look at?
-2. Does the MAE–economic-value disconnect from RQ1 persist under a structurally different price-volatility regime (a calm pre-2021 market vs. the 2022–23 European energy-crisis era), and does the relative usefulness of rank- and extreme-hour-based diagnostics change?
+1. A few 2025–26 papers ([arXiv:2604.12082](https://arxiv.org/abs/2604.12082), [arXiv:2511.13616](https://arxiv.org/abs/2511.13616)) report that MAE tracks a forecast's economic value to battery arbitrage poorly, and that rank correlation tracks it better, on household-scale backtests. Does that hold at market scale — a merchant battery, three countries, six years — and when a forecaster's ranking fails, what is the cause?
+2. Does the MAE–value disconnect, and the relative ranking of forecasters, persist as the price regime changes — from the calm 2019–20 markets through the 2022 gas-crisis prices to the more volatile 2023–25 markets — within each of the three countries?
 
 ## 2. Methodology
 
 ### 2.1 Pipeline
 
 ```
-history.csv ──▶ forecast (per candidate) ──▶ residual scenarios ──▶ CVaR stochastic LP ──▶ realised cost
- (load, PV,        seasonal-naive /            block-bootstrap of      behind-the-meter        vs. no-battery
-  price, optional    direct multi-step          rolling-origin          balance, battery         baseline and
-  residual load)      GB / LEAR                  validation errors      dynamics, CVaR risk       perfect-foresight
-                                                                                                    oracle
+history.csv ──▶ forecast (per candidate) ──▶ point-forecast LP ──▶ realised revenue
+ (day-ahead price,   six candidates              deterministic dispatch,       vs. perfect-foresight
+  residual load)      (§2.3)                     1.5 cycles/day cap             oracle
 ```
 
-1. **Forecasting** (`battery_schedule/forecast.py`). Three candidates: `seasonal_naive` (same hour last week), and two direct multi-step models — gradient boosting (sklearn `HistGradientBoostingRegressor`) and LEAR, a LASSO-regularized linear autoregression and one of the two reference models in the day-ahead electricity price forecasting benchmark of Lago et al. (2021), [epftoolbox](https://github.com/jeslago/epftoolbox). "Direct" means one model per horizon step (1..24h ahead), trained only on features knowable at the origin: calendar features plus autoregressive lags of 24h or more. A recursive version was tried first, feeding each step's own near-term prediction back in as a short lag; it compounded error across the horizon and was dropped (details in `ITERATION_LOG.md`). Price is also forecast using load, PV, and, where available, system-wide residual load (actual grid load minus wind and solar generation) as exogenous inputs. Each is trained against its own historical realised value and, at deployment time, receives a forecast of that same variable rather than its future realised value — mirroring the train-on-actual/deploy-on-forecast information constraint real electricity price models face when using TSO-published load and generation forecasts, though this repo forecasts those inputs itself rather than consuming a published TSO product.
-2. **Model selection** (rolling-origin validation). Each candidate is scored by MAE on origins strictly before the decision point, so there's no leakage, and one model is selected for the single schedule that actually gets deployed "tomorrow." The backtest below skips this step deliberately — every candidate is evaluated on its own.
-3. **Scenario generation** (`make_scenarios`). The selected model's out-of-sample residuals are block-bootstrapped into joint load/price scenario paths, which keeps their historical co-movement (a cold snap raising both, say) instead of sampling each hour and variable independently.
-4. **Optimization** (`battery_schedule/optimise.py`). A two-stage stochastic linear program: charge/discharge/state-of-charge decisions are shared across all scenarios (non-anticipative, first stage), import/export/cost variables are scenario-specific (second stage). The objective is `(1 − w)·E[cost] + w·CVaR_α(cost)`, so the schedule is hedged against the worst 1−α scenarios rather than just optimal on average. Solved with SciPy/HiGHS, no commercial solver needed.
-5. **Evaluation** (`pipeline._backtest`). A walk-forward backtest: at every origin, each configured candidate is forecast, scenario-sampled, and dispatched independently, then priced against what actually happened. Two reference points are computed alongside every candidate — a no-battery baseline (net metering only) and a perfect-foresight oracle (the same LP solved against the actual realised load and price as the only "scenario," with no forecasting involved).
+1. **Forecasting** (`battery_schedule/forecast.py`). Direct multi-step forecasts: one model per horizon step (1..24h), trained only on features known at the origin. Price is forecast using its own lags and system-wide residual load (actual grid load minus wind and solar generation, ENTSO-E) as an exogenous driver, substituted at inference time by a forecast of itself (the same train-on-actual/deploy-on-forecast pattern real EPF models use for TSO-published forecasts). Price forecasts are not clipped at zero, since day-ahead prices go negative.
+2. **Evaluation** (`pipeline._backtest`, `mode: deterministic`). At every origin, each candidate is forecast and its point forecast alone is turned into a schedule (`_plan_deterministic`), then priced against what actually happened. `_plan_deterministic()` takes only the training history and the forecast, so nothing from the day being priced can leak in; a regression test distorts every realised value on the final day and checks the schedule doesn't move. A perfect-foresight oracle (the same optimiser, given the realised prices) is computed per day. The scenario/CVaR layer is not run at this scale — with 6 candidates × up to 2,329 days × 30 scenarios per market it would be prohibitively slow, and the [companion study](docs/household_study.md) already found it adds nothing measurable in either price regime it tested.
+3. **Optimization** (`battery_schedule/optimise.py`). A linear program: charge, discharge and state of charge for a 1 MW / 2 MWh battery (round-trip efficiency 0.92 × 0.92 = 84.6%, capped at 1.5 full-equivalent cycles/day, degradation cost 0.005 EUR/kWh on both charge and discharge = 10 EUR/MWh of round-trip throughput). No site load or PV: revenue is minus the realised grid cost. A merchant sells at the same day-ahead price it buys at (`export_price_ratio = 1.0`), unlike the household study's 0.75. Solved with SciPy/HiGHS.
+4. **Model selection** happens only in `run()`'s next-day step, which must commit to one schedule for tomorrow (by validation MAE). The backtest skips it: every candidate is evaluated on its own, independently, every day.
 
-### 2.2 Metrics
+### 2.2 Forecast candidates
 
-Forecast quality isn't one number. MAE measures point accuracy; Kendall's τ measures whether the relative ordering of cheap vs. expensive hours is preserved; extreme-hour recall measures something narrower still — whether the hours containing the most extreme realised prices, a simple proxy for the hours that may matter most for arbitrage, are correctly identified. §4.1 treats these as three different, only partly overlapping views of the same forecast, since which one best explains realised economic outcome turns out to depend on the model and the day, not to be settled by any one of them.
+Two design choices, applied separately and together, on top of a LASSO-regularized linear autoregression:
 
-- **MAE** — mean absolute error of the point forecast against the realised value.
-- **Kendall's τ** — for every pair of hours in a 24-hour forecast, whether the forecast and the realised outcome agree on which one was more expensive. τ is (agreeing pairs − disagreeing pairs) / total pairs: 1.0 means the forecast's relative ranking of cheap vs. expensive hours is exactly right, 0.0 means the ranking carries no information, regardless of how small the average error is.
-- **Top-4/bottom-4 extreme-hour recall** — of the 4 actual most-expensive (or cheapest) hours in a 24-hour horizon, the share the forecast also places in its own predicted top-4 (or bottom-4). τ weighs all 276 hour-pairs in a day equally; this targets only the hours containing the most extreme realised prices — a proxy for decision relevance, not a claim about which hours the battery's own SOC-constrained schedule actually acts on — so it can separate models that τ can't.
-- **Realised grid cost** — each candidate's schedule, priced against the actual realised load, price, and PV, not the forecast. The number that would show up on a real bill.
-- **Gap to oracle / share of oracle value captured** — realised cost minus the perfect-foresight oracle's cost (or, as a share, 1 minus that gap over the baseline-to-oracle range), i.e. how much of the theoretically achievable value a forecaster leaves on the table vs. captures. Treated as the primary economic outcome in §4 alongside realised cost vs. baseline, since it's the number the research questions are actually about: not "is a battery worth it" but "how much of the available value does forecast quality let you capture."
+| | Origin-relative lags only | + lags aligned to the target hour |
+|---|---|---|
+| **One sin/cos pair (hour of day)** | Lasso-AR | *(not run: same-hour information without a way to place it in the day is not a meaningful combination)* |
+| **24 hour-of-day dummies** | Lasso-AR + hour dummies | Lasso-AR + hour dummies + same-hour lags |
+
+An origin-relative lag of *L* hours, for a model forecasting step *k* of the horizon, is the price
+*L+k* hours before the target hour — for a naive one-week-ago lag, that is never the same hour of
+day as the target unless *k* happens to be a multiple of 24. A lag *aligned to the target hour*
+(`series.shift(lag - step)` in `forecast.py`) is instead exactly *lag* hours before the target,
+so an "aligned lag of 168" is literally "the price at this same hour, one week ago" — the
+information seasonal-naive uses by construction. Gradient boosting is run both ways too
+(`gradient_boosting`, `gradient_boosting_aligned`), without hour dummies (tree splits can express
+hour-of-day structure from the calendar features directly). Seasonal naive (same hour last week,
+no parameters) is the sixth and last candidate.
+
+### 2.3 Metrics
+
+- **MAE**: mean absolute price error (EUR/MWh).
+- **Kendall's τ**: over the 276 pairs of hours in a day, the share the forecast orders correctly minus the share it orders wrongly.
+- **Top-k / bottom-k recall** (k = 3): of the 3 hours with the highest (lowest) realised prices, the share the forecast also puts in its own top (bottom) 3. k = 3 matches a 2-hour battery cycling up to 1.5 times a day.
+
+Economic outcomes: **revenue** (baseline cost, which is zero here, minus realised cost), net of
+the same degradation cost the optimiser is charged, reported as **EUR per MW per year**, and
+**capture** (revenue divided by the oracle's).
+
+### 2.4 Statistical treatment
+
+Days are serially correlated, so intervals use a circular moving-block bootstrap (14-day blocks,
+3000 resamples). Paired revenue differences between two candidates use the same bootstrap.
+Correlations between a metric and revenue are reported day-demeaned (each metric and each
+candidate's revenue minus that day's mean across candidates), which asks whether, on the same
+day, the candidate with the better metric earned more; pooled correlations are not reported here
+since they mix in how good a trading day it was for everyone. Model-level Spearman correlations
+have n = 6 and are descriptive. `scripts/market_report.py` produces all of this from the stored
+per-day records; `scripts/run_market_study.sh` runs the whole second pass end to end.
 
 ## 3. Data
 
-| | Load & PV | Price | System fundamentals |
+| Market | Bidding zone | Period | Rows |
 |---|---|---|---|
-| Synthetic (`configs/default.yaml`) | Formula-generated, 2025-dated, 120 days | Formula-generated, same series | — |
-| Real German 2015–18 (`configs/real_de.yaml`) | [OPSD household dataset](https://data.open-power-system-data.org/household_data/), `residential4` (Konstanz, southern Germany), real meter data, Oct 2015–Feb 2018 | ENTSO-E day-ahead auction price, DE-AT-LU bidding zone, real | ENTSO-E actual system load and wind+solar generation, DE-AT-LU, real |
-| Constructed scenario (`configs/counterfactual.yaml`) | Same household's real load/PV, Oct 2015 onward, positionally reindexed | ENTSO-E day-ahead price, DE-LU zone, Aug 2022–Mar 2023, real but not co-observed with the load column | not used |
+| Germany-Luxembourg | `DE_LU` | 2019-05-17 – 2025-09-30, hourly | 2,329 backtest days (stride 1) |
+| Netherlands | `NL` | 2019-05-17 – 2025-09-30, hourly | 1,165 backtest days (stride 2) |
+| France | `FR` | 2019-05-17 – 2025-09-30, hourly | 1,165 backtest days (stride 2) |
 
-This constructed scenario recombines two real, independently observed series — it isn't a causal counterfactual in the econometric sense (no identification argument for what this household's own load *would have been* under 2022–23 prices) and isn't a historical replay either: this household never saw 2022–23 prices, and its load/PV values were never actually co-observed with them. It holds the household load/PV pattern fixed while substituting a crisis-era price series in place of the historical one, to test whether §4.1's MAE-vs-τ disconnect is a property of that specific calm market era, or replicates once volatility is structurally different.
-
-All three configs use the same three forecast candidates and the same walk-forward backtest (30 days for the two real datasets, 7 for the synthetic quick-start), so results are directly comparable.
+ENTSO-E day-ahead price and actual system load / wind / solar generation (`entsoe-py`,
+`scripts/prepare_market_data.py`), fetched month by month with retries. Day-ahead prices are
+hourly throughout; the EU day-ahead market moved to 15-minute products on 2025-10-01, so data
+stops before that rather than mixing resolutions. The Netherlands and France backtests evaluate
+every second day rather than every day, purely for compute time (six candidates refit from
+scratch at every origin; a full-stride pass over 2,329 days per market would take several times
+longer for a proportionally small gain in interval width) — still over a thousand evaluated days
+each, more than the household study's 30.
 
 ## 4. Results
 
-### 4.1 Real German market, 2015–18 (30-day backtest, Jan 6 – Feb 4, 2018)
+Full per-market reports (`results/market/report_{de_lu,nl,fr}.txt`) contain every number below;
+the underlying per-day records are `results/market/run_metrics_market_*.json`.
 
-| Candidate | Price MAE (EUR/kWh) | Kendall's τ | Top-4 expensive recall | Bottom-4 cheap recall | Realised cost, 30 days | vs. no-battery | Share of oracle value captured |
-|---|---|---|---|---|---|---|---|
-| Seasonal naive | 0.0138 | 0.565 (best) | 0.42 | 0.51 | 2.87 EUR (best) | −44.5% (best) | 59.0% (best) |
-| Gradient boosting | 0.0091 | 0.550 | 0.45 (best) | 0.58 (best) | 3.59 EUR | −30.5% | 40.4% |
-| LEAR (Lasso) | 0.0089 (best) | 0.452 (worst) | 0.12 (worst) | 0.57 | 4.53 EUR (worst) | −12.5% (worst) | 16.5% (worst) |
+### 4.1 Revenue and risk
 
-No-battery baseline: 5.17 EUR. Perfect-foresight oracle: 1.27 EUR, a 75.5% reduction vs. baseline.
+| | Germany-Luxembourg | Netherlands | France |
+|---|---:|---:|---:|
+| Oracle, net of degradation (EUR/MW/yr) | 48,319 | 51,921 | 34,811 |
+| Seasonal naive | 35,461 (73.4%) | 34,753 (66.9%) | 21,981 (63.1%) |
+| Gradient boosting | 28,707 (59.4%) | 29,266 (56.4%) | 18,521 (53.2%) |
+| Gradient boosting + same-hour lags | 32,765 (67.8%) | 33,495 (64.5%) | 20,527 (59.0%) |
+| Lasso-AR | 9,884 (20.5%) | 7,759 (14.9%) | −655 (−1.9%) |
+| Lasso-AR + hour dummies | 28,684 (59.4%) | 30,175 (58.1%) | 17,638 (50.7%) |
+| **Lasso-AR + hour dummies + same-hour lags** | **37,429 (77.5%)** | **37,872 (72.9%)** | **23,132 (66.5%)** |
 
-![Point accuracy vs rank accuracy as indicators of battery profit](docs/images/mae_vs_tau_scatter_real.png)
-![What a better forecast is worth](docs/images/forecast_value_bars_real.png)
+The best candidate is the same in all three markets, and beats naive with a 95% CI excluding
+zero in all three (key-result table above). Naive itself beats both plain gradient boosting and
+plain Lasso-AR clearly (naive − GB: +6,754 / +5,487 / +3,460 EUR/MW/yr, all three CIs exclude
+zero); adding same-hour lags to gradient boosting closes most but not all of that gap, and adding
+them to Lasso-AR (already with hour dummies) closes it and reverses it.
 
-MAE ranks the candidates backwards: LEAR has the best point accuracy and the worst realised profit of the three; naive has the worst MAE and the best profit. Aggregate τ gets the model ranking right instead (naive > GB > LEAR, matching realised profit) — an independent result consistent with what [arXiv:2604.12082](https://arxiv.org/abs/2604.12082) ("When Forecast Accuracy Fails") and [arXiv:2511.13616](https://arxiv.org/abs/2511.13616) report on other datasets, that rank correlation tracks realised battery dispatch value better than MAE or RMSE does.
+Risk is not uniformly better for the best candidate. Its share of losing days and its 5th-percentile
+day are better than naive's in all three markets (e.g. Germany-Luxembourg: 11.9% loss days and
+−7.6 EUR/MW p5-day vs. naive's 13.8% and −12.8), and so is its max drawdown in two of three
+(Germany-Luxembourg 94 vs. 159; France 124 vs. 160 EUR/MW), but in the Netherlands and France its
+single *worst day* is worse than naive's (Netherlands −129.1 vs. −99.6; France −122.4 vs.
+−103.0 EUR/MW) — a higher-earning strategy here is not a strictly safer one on the single worst
+day, even though it loses money on fewer days overall.
 
-τ weighs all 276 hour-pairs in a day equally, but a battery's dispatch decision mainly depends on a handful of them — splitting τ into top-4/bottom-4 extreme-hour recall reveals an asymmetry the aggregate number hides. LEAR identifies the four cheapest hours at roughly the same rate as GB and naive (0.57 vs. 0.58 and 0.51), but its recall of the four most expensive hours is only 0.12 vs. 0.42–0.45 for the other two: its weak τ isn't a uniform loss of ordering information, it's concentrated in missing price spikes, which is also where a battery's largest arbitrage opportunities are. Top-4 recall alone reproduces the three-model economic ordering more sharply than τ does, though that's a comparison of 3 model-level means, not a statistical claim — the next section checks whether it holds up day-to-day.
+Lasso-AR without any calendar structure is a cautionary case in every market: max drawdown
+5,855–8,612 EUR/MW (two orders of magnitude above the other candidates), and in France it loses
+money against doing nothing at all.
 
-Every candidate here still leaves 1.6–3.3 EUR of the oracle's value on the table.
+### 4.2 Persistence across price regimes
 
-**Day-to-day robustness.** The clean three-model ordering above doesn't mean any metric reliably predicts day-to-day value. Using the per-day, per-candidate breakdown every backtest run records (`pipeline._backtest()`'s `daily` field; `python -m scripts.analyze_daily --metrics results/run_metrics_real_de.json`), pooled across 90 (day, candidate) observations, τ and top-4 recall have similar, modest correlations with oracle-relative performance, while MAE is comparably strong or stronger by one measure; bottom-4 recall — flat in the aggregate table above — is actually the strongest pooled correlate of savings vs. baseline:
+| | 2019 | 2020 | 2021 | 2022 (crisis) | 2023 | 2024 | 2025 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Germany-Luxembourg, naive | 32% | 46% | 63% | 72% | 74% | 78% | 84% |
+| Germany-Luxembourg, best | 34% | 50% | 71% | 77% | 78% | 82% | 86% |
+| Netherlands, naive | 21% | 30% | 49% | 65% | 70% | 73% | 81% |
+| Netherlands, best | 32% | 48% | 60% | 70% | 74% | 80% | 84% |
+| France, naive | 37% | 46% | 59% | 60% | 67% | 65% | 71% |
+| France, best | 55% | 55% | 66% | 61% | 65% | 70% | 77% |
 
-| Daily diagnostic (pooled, n=90) | Correlation with economic outcome |
-|---|---:|
-| τ → −gap to oracle | r=+0.26 (p=0.014, Pearson) |
-| MAE → −gap to oracle | r=−0.36 (p=0.001, Spearman) |
-| Top-4 recall → −gap to oracle | r=+0.27 (p=0.010, Pearson) |
-| Bottom-4 recall → savings vs. baseline | r=+0.32 (p=0.002, Pearson) |
+(Capture ratio by calendar year; "best" = Lasso-AR + hour dummies + same-hour lags.)
 
-Broken out per candidate (n=30 each), the leading metric changes again: gradient boosting's τ, MAE, and top-4 recall all track its own daily economics about equally (r≈0.4–0.5); naive's strongest daily relationship is with bottom-4 recall, not τ or MAE; LEAR's daily τ has essentially no relationship with its own daily economics (r≈0.03) even though its recall does — consistent with a persistent structural gap (missing spikes most days) rather than day-to-day noise. No metric is a universal daily predictor here; full breakdown in `results/run_metrics_real_de.json`. We stopped at this point rather than searching further specifications (other windows, lagged correlations, other targets) for one where a favoured metric "wins" — that would be fishing, not a result.
+Two patterns hold in all three markets and all seven years. First, every forecaster's capture
+ratio rises as the sample moves from the calm 2019–20 markets into the more volatile years after
+— including the crisis year 2022, which is not an outlier relative to the general upward trend.
+Second, the best candidate beats naive in every one of these 21 market-years, including 2022
+itself (where the gap is at its narrowest: Germany-Luxembourg +5pp, Netherlands +5pp, France
++1pp). Neither ranking nor the direction of the MAE-vs-value gap (§4.3) is specific to one regime.
+These are year-level point estimates (n = 1 backtest per market-year for the "best" vs. "naive"
+comparison), not independently confidence-tested; the pooled comparison across all years in §4.1
+is the one with a formal interval.
 
-An earlier backtest window in the same dataset (Dec 2, 2017 – Jan 1, 2018, which includes New Year) produced net losses for two of the three candidates, before the forecaster was fixed to use direct multi-step forecasting and exogenous market fundamentals (§5, and `ITERATION_LOG.md`). It's included here for a sense of how much a specific 30-day window can matter, not as a second controlled result.
+### 4.3 MAE tracks revenue poorly; rank-based measures don't
 
-**Which hours actually break LEAR's ranking.** A scan of per-day τ across all 30 backtest origins (`scripts/diagnose_tau.py`, results in `results/tau_scan_lear.json`) finds LEAR's single worst day at Jan 15, 2018 (τ=0.17). Zooming into just that day:
+| | Germany-Luxembourg | Netherlands | France |
+|---|---:|---:|---:|
+| Model-level Spearman ρ(revenue), −MAE | +0.31 | +0.26 | +0.54 |
+| Model-level Spearman ρ(revenue), τ | +1.00 | +0.89 | +1.00 |
+| Model-level Spearman ρ(revenue), top-3 recall | +0.94 | +0.94 | +0.94 |
+| Day-demeaned corr(τ, revenue) − corr(−MAE, revenue) | +0.341 [+0.276, +0.401] | +0.290 [+0.207, +0.363] | +0.249 [+0.116, +0.397] |
 
-![Actual price vs. forecasts on LEAR's worst day, with each series' top-4/bottom-4 hours marked](docs/images/diagnostic_day_lear_2018-01-15.png)
+All three CIs in the last row exclude zero: on the same day, τ explains which candidate earned
+more markedly better than MAE does, replicated across three markets, six-plus years and six
+candidates.
 
-On that day, the realised price exhibits a sharp early-morning spike followed by strongly negative late-evening prices, a shape that differs substantially from the smoother pattern LEAR's forecast follows. None of LEAR's own top-4 predicted-expensive hours or bottom-4 predicted-cheap hours overlaps with the corresponding realised-extreme-hour sets. Seasonal naive, simply repeating the previous week's same-hour prices, happens to track this day's shape better (τ=0.65). Gradient boosting performs even worse on this particular day (τ=0.04), so the observation isn't a LEAR-only failure.
+The clearest single illustration is a minimal pair that isolates model class from feature design:
+Gradient boosting + same-hour lags has the *lowest* MAE of any candidate in every market (19.9 /
+22.8 / 25.0 EUR/MWh in France/Netherlands/Germany-Luxembourg), yet Lasso-AR + hour dummies +
+same-hour lags — same lag alignment, same calendar information, a linear model instead of a
+tree ensemble — has higher MAE and both higher τ and more revenue, in all three markets
+(revenue higher by 2,605–4,664 EUR/MW/yr, all three paired CIs excluding zero). Both models see
+the same information; the one with the better *ranking* earns more, and the one with the better
+*point accuracy* does not.
 
-This day is best read as a regime/outlier diagnostic, not as an explanation of LEAR's aggregate ranking weakness — one bad day shouldn't be allowed to carry that claim on its own, and it's a clean illustration of the mechanism above rather than a separate one: none of LEAR's own predicted-expensive hours land on an actual expensive hour, the same asymmetric, expensive-hour-blind failure the 30-day aggregate top-4 recall (0.12) points to. Checked directly, excluding Jan 15 changes any model's aggregate MAE, τ, extreme-hour recall, realised cost, or oracle-capture share by at most a point or two (`python -m scripts.analyze_daily --exclude-date 2018-01-15`) — LEAR's top-4 recall is unchanged at 0.12 — so nothing in §4.1's table is being driven by this one day.
+### 4.4 Why calendar structure and lag alignment matter
 
-### 4.2 Constructed scenario: does the MAE-vs-τ disconnect hold under a different volatility regime?
+![Average price by hour of day across three markets](docs/images/market_hourly_profile.png)
 
-German day-ahead prices in 2015–18 were unusually calm — this dataset's price standard deviation is 0.015 EUR/kWh. The 2022 European gas crisis, plus higher renewable penetration since, raised both the level and the volatility of prices structurally; this constructed scenario's price std is 0.161 EUR/kWh, roughly an order of magnitude higher. This isn't a test of whether thin price spreads explain poor profitability — §4.1's oracle already shows 75% of cost was theoretically avoidable even in the calm market, so the main remaining gap in that experiment isn't the absence of theoretical arbitrage value, it's the ability of the forecast-driven dispatch to capture it. It's a test of whether §4.1's finding survives a structurally different regime.
+Lasso-AR, which has neither hour dummies nor aligned lags, places the day's predicted peak at
+midday on 23–28% of days across the three markets, when the actual peak is at midday on 0–1% of
+days; it puts the peak in the 16–20h evening window on only 33–45% of days against an actual
+72–75%. This is the same single-sin/cos-hump failure mode as the household study's §3.2, now
+replicated at market scale: one harmonic per horizon step can express only one hump a day.
 
-| Candidate | Price MAE (EUR/kWh) | Kendall's τ | Share of oracle value captured |
-|---|---|---|---|
-| Seasonal naive | 0.0341 | 0.536 (best) | 64.8% (best) |
-| Gradient boosting | 0.0302 (best) | 0.518 | 64.0% |
-| LEAR (Lasso) | 0.0376 (worst) | 0.040 (collapsed) | 56.6% (worst) |
+Hour dummies alone (`Lasso-AR + hour dummies`) fix the *midday* mistake almost completely (0% of
+days) but overcorrect toward the evening (92–99% of days vs. an actual 72–75%), losing some of the
+mornings the actual peak sometimes falls in. Adding lags aligned to the target hour on top
+(`+ same-hour lags`) brings the evening/morning split closer to the true 72–75% / 19–22% (e.g.
+Germany-Luxembourg 84% / 11%): hour dummies supply the calendar shape a day *usually* has, and
+aligned lags supply the day-specific signal — what actually happened at this hour recently —
+that distinguishes an unusual morning-peak day from a typical evening-peak one, the same
+information seasonal-naive has access to and a plain lag structure does not.
 
-![Point accuracy vs rank accuracy, constructed scenario](docs/images/mae_vs_tau_scatter_counterfactual.png)
-![What a better forecast is worth, constructed scenario](docs/images/forecast_value_bars_counterfactual.png)
+### 4.5 Companion study
 
-With the thicker spread, every candidate is profitable, unlike some of them in §4.1's earlier window. LEAR's MAE is only a little worse than the other two here, but its τ drops to 0.04 — close to zero, indicating little useful rank information (not a formal significance claim; that would need a permutation test against the null distribution for a 24-observation daily ranking). A linear model that ranks calm, mean-reverting prices tolerably well (τ 0.45–0.52 in §4.1) falls apart on the sharp, nonlinear spikes of a crisis-era market — a failure that MAE alone never shows.
-
-### 4.3 Synthetic data (sanity check only)
-
-| Candidate | Price MAE (EUR/kWh) | Kendall's τ | Realised cost, 7 days | vs. no-battery |
-|---|---|---|---|---|
-| Seasonal naive | 0.0129 | 0.621 | 26.36 EUR | −34.9% |
-| Gradient boosting | 0.0100 (best) | 0.636 | 26.17 EUR (best) | −35.3% (best) |
-| LEAR (Lasso) | 0.0252 | 0.655 (best) | 27.00 EUR | −33.3% |
-
-Baseline 40.47 EUR, oracle 25.64 EUR (−36.6%). All three land within a few percent of each other, and the best-MAE and best-τ candidates aren't even the same one — synthetic data (a smooth curve plus noise) just doesn't have enough real structure for MAE and τ to pull apart the way they do on real data. Read this section only as "the pipeline runs end to end," not as evidence either way for the findings above.
-
-### 4.4 Risk-aversion (CVaR) sensitivity
-
-Re-run with the current forecaster and the current backtest window (gradient boosting, `configs/real_de.yaml`, the same Jan 6 – Feb 4, 2018 window as §4.1; `results/cvar_sensitivity_real_de.json`). An earlier version of this sweep, run before the forecaster fix (§2.1, `ITERATION_LOG.md`), is no longer representative and has been replaced.
-
-![CVaR risk-aversion sensitivity](docs/images/cvar_sensitivity.png)
-
-With the current forecaster, the battery is profitable at every CVaR weight tested (−30.5% to −35.4% vs. baseline) — risk-aversion is no longer the difference between profit and loss, the way it was in the earlier, pre-fix version of this sweep; here it's a smaller lever on top of an already-profitable schedule. The relationship isn't monotonic: weight=0.2 (the default used elsewhere in this README) is actually slightly worse than weight=0 (−30.5% vs. −32.6%), improves through 0.5 and 0.8 (−35.4%, the best setting found), and eases off slightly at the pure-worst-case extreme, weight=1 (−34.6%). That maximal risk-aversion isn't the best setting still holds; the earlier "risk-aversion turns a loss into a smaller loss" framing doesn't, now that the underlying forecaster and price spread support a profitable schedule regardless.
+The [household-scale study](docs/household_study.md) (13.5 kWh / 5 kW battery, real German
+meter data, 30-day backtests) is where this project started, and is where the scenario/CVaR
+layer, a household-load ablation and a k-sensitivity check are actually tested. Its headline —
+MAE ranks five forecasters almost backwards (ρ = −0.90) while τ and top-k recall track realised
+cost — is the same disconnect this document replicates at market scale, on a different asset,
+different markets, and six more years of data.
 
 ## 5. Discussion
 
-**Question 1.** No single metric answers this reliably — that instability is itself the main finding, not a nuisance to explain away. §4.1's three layers of evidence (cross-model aggregate, daily pooled, within-candidate) each show something different, and the layer that looks cleanest — aggregate τ and top-4 recall correctly ordering the three models — doesn't hold up as a day-to-day predictor for any single model. What ties the layers together is a mechanism, not a winning metric: LEAR's failure is concentrated specifically in missing price spikes (§4.1's asymmetric recall), and that same asymmetry gets more severe under higher volatility (§4.2, τ collapses to ~0.04). Forecast accuracy isn't a scalar quantity for a storage decision — MAE, τ, and extreme-hour recall measure genuinely different things, and which one matters most for a given day or model depends on where the forecast's errors fall in the price distribution and how they interact with the battery's own sequential constraints, not on any one metric being the "right" one. What this repo adds beyond the literature cited in §4.1 is this layered picture, rather than only confirming that rank-based metrics beat MAE in aggregate.
+MAE does not indicate which forecaster earns a merchant battery more, and rank-based measures do,
+in three day-ahead markets and across six-plus years, extending a pattern first seen at household
+scale (§4.5). The mechanism behind it is now split into two independent, additive pieces:
+whether a model has calendar structure fine enough to place a peak (hour dummies vs. one
+sin/cos harmonic) and whether its lag features carry the same "what happened at this hour
+recently" information a seasonal baseline gets for free (aligned vs. origin-relative lags).
+Missing either one is enough to lose to naive by a wide margin; having both is enough to beat it,
+by a small but consistent amount, in every market and every year studied.
 
-**Question 2.** It persists, and gets more severe: LEAR's τ drops from 0.452 in the calm 2015–18 window to 0.04 in the high-volatility constructed scenario (§4.2), plausibly reflecting a linear model's limited ability to capture the nonlinear, spike-driven structure of electricity prices as volatility rises. The oracle indicates substantial theoretical arbitrage value in *both* regimes — 75.5% of cost avoidable even in the calm window (§4.1) — so regime changes less how much value is theoretically available than how easily forecast-driven dispatch captures it: an early, pre-fix version of this backtest still lost money in the calm window despite that available value, because the forecaster itself was broken (§2.1, `ITERATION_LOG.md`), not because the market lacked arbitrage opportunity. The high-volatility scenario, by contrast, made every candidate profitable regardless of forecast quality; the two models with moderate τ captured about 64% of oracle value there against LEAR's 56.6% (§4.2), consistent with rank information mattering, though a 3-model comparison doesn't establish causality. Seasonal naive was itself regime-dependent — best performer in the calm, holiday-free §4.1 window, worst in an earlier window that included New Year — so "naive is a strong baseline" isn't a fixed property of the model.
+That margin should not be overstated. The best candidate's advantage over naive is 2–8% of oracle
+revenue — real and statistically distinguishable from zero, but a long way from the ~25 to
+~55-percentage-point range separating the well-specified candidates from the poorly-specified
+ones. Most of the achievable value here is already available to the trivial baseline; what a
+carefully designed forecaster adds on top is a genuine but modest edge, plus (in two of three
+markets) a somewhat worse single worst day even as its average and its loss-day share improve.
+
+RQ2's regime check adds a robustness result rather than a new mechanism: as the sample moves from
+calm to crisis-level to more volatile-again prices, every forecaster's capture ratio rises, and
+the ranking among forecasters — established at MAE's expense — does not flip in any of the 21
+market-years examined, including the crisis year itself.
 
 ## 6. Limitations
 
-- Two or three 30-day backtest windows per regime is a small sample; findings here are empirical diagnostics, not statistically generalised benchmark results.
-- §4.1's observation that top-4 recall's *aggregate* ordering lines up with the economic ranking more sharply than τ's is a comparison of 3 model-level means (naive/GB/LEAR), not a statistically established claim that recall generally outpredicts τ. Checked at the daily level (n=90 pooled, n=30 per candidate) it doesn't hold up cleanly either — top-4 recall's pooled correlation with economic value is about the same size as τ's, and bottom-4 recall (flat in aggregate) has the strongest pooled correlation of the four metrics tested against one of the two economic targets. All of these daily-level numbers are diagnostic, not hypothesis tests.
-- §4.2's constructed scenario recombines two real, independently observed series and doesn't claim this household experienced 2022–23 prices, or support a causal reading (no identification argument for what this household's load would have been under those prices).
-- Whether residual load as an exogenous price driver (§2.1) actually helps, net of everything else, isn't cleanly isolated yet — the two real-data windows in §4.1 differ in both the forecaster and the backtest period at once. A same-window ablation is the natural next step (`ITERATION_LOG.md`).
-- No decision-focused learning (training the forecaster's loss to directly minimize downstream battery regret, [arXiv:2305.00362](https://arxiv.org/abs/2305.00362)) and no conformal-prediction-calibrated risk control ([arXiv:2501.08472](https://arxiv.org/abs/2501.08472)) here. Both are reasonable next steps this repo hasn't taken.
+- The Netherlands and France backtests evaluate every second day, for compute-time reasons
+  (§3); confidence intervals there are correspondingly a bit wider than Germany-Luxembourg's,
+  though narrow enough that every headline comparison still excludes zero.
+- Six candidates and three markets give model-level Spearman correlations of n = 6 — descriptive,
+  not a formal test. The by-year breakdown (§4.2) has one point estimate per market-year and no
+  confidence interval; block-bootstrap and paired-difference intervals in §4.1 and §4.3 are the
+  load-bearing statistics.
+- The battery is a price-taker with no network charges, taxes, balancing costs or bid-ask spread
+  between the day-ahead auction and this analysis's assumed execution price; a real merchant
+  desk's economics would be lower than the headline numbers by some amount not modelled here.
+  The export price ratio (1.0: sell at the same price bought at) is a simplifying assumption for
+  a merchant asset, not a specific market's real settlement rule.
+- The scenario/CVaR layer is not exercised at market scale (§2.1); the companion household study
+  is the only evidence here on whether modelling uncertainty or risk-aversion earns its keep, and
+  it found close to nothing measurable in either regime it tested — a claim not independently
+  checked against a market-scale, multi-year, more volatile dataset.
+- "Aligned lags" only ever go back 24, 48 or 168 hours; a model with a longer or shorter aligned
+  lag set, or with lags aligned at sub-daily resolution, is not tested.
+- Not attempted: decision-focused training of the forecaster on trading regret
+  ([arXiv:2305.00362](https://arxiv.org/abs/2305.00362)), conformal risk control
+  ([arXiv:2501.08472](https://arxiv.org/abs/2501.08472)), degradation- or cycle-cap sensitivity,
+  and Diebold–Mariano-style formal forecast comparison tests.
 
 ## 7. Reproducing this
 
-### Synthetic quick start (no API keys needed)
-
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e '.[dev]'
-battery-schedule make-demo-data --output data/raw/history.csv
-battery-schedule run --config configs/default.yaml
-pytest
-python scripts/plot_results.py --config configs/default.yaml --suffix synthetic
-python scripts/plot_forecast_value.py --metrics artifacts/run_metrics.json --suffix synthetic
-```
-
-### Real German data (§4.1)
-
-```bash
 pip install -e '.[research]'   # entsoe-py
-curl -o data/raw/opsd_household_60min.csv https://data.open-power-system-data.org/household_data/2020-04-15/household_data_60min_singleindex.csv
 echo "ENTSOE_API_KEY=..." > .env   # https://transparency.entsoe.eu/ -> "Web API Security Token"
-python -m scripts.prepare_real_data
-battery-schedule run --config configs/real_de.yaml   # ~60-90 min: every candidate is refit at every backtest origin
-python -m scripts.plot_forecast_value --metrics artifacts_real/run_metrics.json --suffix real
+python -m scripts.prepare_market_data --zone DE_LU --out data/raw/market_de_lu.csv
+python -m scripts.prepare_market_data --zone NL     --out data/raw/market_nl.csv
+python -m scripts.prepare_market_data --zone FR     --out data/raw/market_fr.csv
+
+battery-schedule run --config configs/market_de_lu.yaml   # ~1 h; 4 candidates, daily
+battery-schedule run --config configs/market_nl.yaml      # ~1 h; 4 candidates, every 2nd day
+battery-schedule run --config configs/market_fr.yaml      # ~3 h; 6 candidates, every 2nd day
+battery-schedule run --config configs/market_de_lu_aligned.yaml   # ~2.5 h; the 2 aligned candidates + naive
+battery-schedule run --config configs/market_nl_aligned.yaml      # ~40 min
+
+bash scripts/run_market_study.sh reports   # merges both passes per market, writes reports/*.txt and docs/images/market_*.png
 ```
 
-### Constructed scenario (§4.2)
-
-```bash
-python -m scripts.prepare_counterfactual_data
-battery-schedule run --config configs/counterfactual.yaml
-python -m scripts.plot_forecast_value --metrics artifacts_counterfactual/run_metrics.json --suffix counterfactual --title-suffix " — constructed scenario: 2022-23 crisis-era prices"
-```
-
-`battery-schedule run` prints one line per backtest day. A 30-day real-data run takes roughly 60–90 minutes, since every candidate is independently refit — rolling-origin validation plus a final refit — at every origin (§2.1).
+`bash scripts/run_market_study.sh` (no argument) runs the two aligned-pass backtests and then the
+reports/charts in one go. Each `battery-schedule run` prints one line per backtest day; if the
+computer sleeps mid-run, the process pauses with it (`caffeinate -i -s` on macOS prevents that).
+See the [companion study](docs/household_study.md) for the household-scale reproduction steps.
 
 ## 8. Input contract
 
-CSV must contain `timestamp` (timezone-aware or UTC), `load_kw`, and `import_price_eur_kwh`. It may contain `pv_kw`, `export_price_eur_kwh`, and `residual_load_mw`. Rows must be hourly, regular, and have no duplicate timestamps — see `battery_schedule.data.read_history`. Day-ahead prices may be negative, a real feature of high-renewables markets, and aren't clipped; load and PV must be non-negative.
+CSV must contain `timestamp` (timezone-aware or UTC), `load_kw` and `import_price_eur_kwh`. It
+may contain `pv_kw`, `export_price_eur_kwh` and `residual_load_mw`. Rows must be hourly, regular
+and free of duplicate timestamps (`battery_schedule.data.read_history`). Day-ahead prices may be
+negative and are not clipped; load and PV must be non-negative. The market-side data has
+`load_kw = pv_kw = 0` throughout (no site load).
 
 ## 9. Project structure
 
 ```
-src/battery_schedule/                   production pipeline — tested, CI-covered
-  forecast.py                             seasonal_naive / gradient_boosting / lear, direct multi-step,
-                                           residual-load-aware price forecasting
-  optimise.py                             CVaR two-stage stochastic LP
-  pipeline.py                             run() for the deployable next-day schedule;
-                                           _backtest() for the per-candidate + oracle evaluation in §2.1/§4
-configs/default.yaml                    synthetic quick-start config
-configs/real_de.yaml                    real German household + ENTSO-E config (§4.1)
-configs/counterfactual.yaml             constructed scenario: same household's load pattern + 2022-23 crisis-era prices (§4.2)
-scripts/entsoe_client.py                ENTSO-E price / load / generation connectors
-scripts/prepare_real_data.py            builds data/raw/history_de_real.csv from OPSD + ENTSO-E
-scripts/prepare_counterfactual_data.py  builds the constructed-scenario CSV (real load pattern + recombined price series)
-scripts/plot_results.py                 the day-ahead dispatch chart from a completed run
-scripts/plot_forecast_value.py          the per-candidate value/MAE/tau charts in §4, reads run_metrics.json
-scripts/cvar_sensitivity.py             realised cost across a CVaR-weight sweep, for one named candidate
-scripts/diagnose_tau.py                 per-day tau for one candidate, to find which specific hours it misranks
-scripts/plot_diagnostic_day.py          actual-vs-forecast chart for one backtest day, with top-4/bottom-4 hours marked
-scripts/analyze_daily.py                daily tau/MAE/recall-vs-economics correlations and leave-one-day-out checks, from pipeline._backtest()'s daily[] field
-scripts/plot_cvar_sensitivity.py        the CVaR-weight sweep chart in §4.4, reads cvar_sensitivity.py's output
-results/                                committed copies of expensive-to-recompute outputs — see results/README.md
-tests/                                  end-to-end pytest: forecast → scenarios → schedule,
-                                         plus a net-exporter-day regression test
-ITERATION_LOG.md                        the chronological debugging/decision history behind this README
+src/battery_schedule/                    production pipeline: tested, CI-covered
+  forecast.py                              six candidates, direct multi-step, aligned- and origin-relative-lag features
+  optimise.py                              CVaR two-stage stochastic LP (also used deterministically, cvar_weight=0)
+  pipeline.py                              run() for the next-day schedule; _plan()/_plan_deterministic() and _backtest() for evaluation
+configs/market_{de_lu,nl,fr}.yaml        market-side configs: main pass (naive, GB, Lasso-AR, Lasso-AR+hourly[, both aligned candidates for FR])
+configs/market_{de_lu,nl}_aligned.yaml   second pass: naive (consistency check) + the two aligned candidates
+configs/{default,real_de,counterfactual,real_de_no_household_exog}.yaml   household-scale study configs (docs/household_study.md)
+scripts/prepare_market_data.py           builds data/raw/market_<zone>.csv from ENTSO-E (price + residual load only)
+scripts/entsoe_client.py                 ENTSO-E price / load / generation connectors
+scripts/market_report.py                 revenue, risk, by-year, paired diffs, forecast quality, Spearman, day-demeaned correlations, peak-hour placement
+scripts/plot_market.py                   revenue-by-year, cumulative-revenue and metric-vs-capture charts
+scripts/plot_hourly_profile.py           average daily price shape, forecasts vs. actual (market and household)
+scripts/run_market_study.sh              runs the aligned second pass, merges results, writes reports and charts
+scripts/robustness.py, cvar_sensitivity.py, plot_forecast_value.py, plot_diagnostic_day.py, plot_cvar_sensitivity.py   household-scale study tooling
+scripts/style.py                         shared model labels and validated chart colours
+results/market/                          committed market-study run outputs and reports (see results/README.md)
+results/household/                       committed household-study run outputs (see results/README.md)
+docs/household_study.md                  the household-scale companion study
+docs/images/                             charts referenced by both documents
+tests/                                   forecast → schedule, no-leakage (both origin-relative and aligned lags), negative-price, cache-equivalence, cycle-cap, net-exporter tests
+ITERATION_LOG.md                         the chronological debugging and decision history behind this project
 ```
 
 A container recipe (`Dockerfile`) and GitHub Actions CI are included.

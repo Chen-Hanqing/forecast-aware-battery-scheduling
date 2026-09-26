@@ -4,6 +4,11 @@ The chronological history behind `README.md`: what was tried, what broke, what w
 found along the way, and why the project ended up with its current shape. The README
 states the current methodology and results; this file is the "how we got there."
 
+
+> Sections 1–14 record what was believed at the time. Several conclusions in §7, §9, §11, §12 and
+> §14 were later found to be wrong or overstated; §15 says which and why. The README reports the
+> corrected results.
+
 ## 1. Starting point: cleaning up an inherited repo
 
 The repo arrived with a working core pipeline (CLI → forecast → scenarios → CVaR LP →
@@ -197,3 +202,106 @@ run's `print()` statements can sit invisible until the process exits — fixed b
 into `pipeline._backtest()` once that became the standard code path (it had none at
 first, since the logic was moved in from a script that printed progress, but the
 printing wasn't carried over in the move).
+
+## 14. From "τ beats MAE" to "no universal metric"
+
+A single worst-day diagnostic (`scripts/diagnose_tau.py`, scanning per-day τ for LEAR)
+led to a much larger reworking of what this project actually claims. Along the way:
+
+- `pipeline._backtest()` was instrumented to record a per-day, per-candidate `daily`
+  list (MAE, τ, realised cost, baseline/oracle cost) instead of only 30-day aggregates —
+  needed to ask whether τ tracks *daily* economic value, not just the 3-model aggregate
+  ranking.
+- Decomposing τ into **top-4/bottom-4 extreme-hour recall** (share of the actual
+  4 most-expensive/cheapest hours a forecast also puts in its own top/bottom-4) surfaced
+  a sharper, asymmetric pattern aggregate τ hides: LEAR finds cheap hours normally
+  (recall 0.57) but is dramatically worse at finding expensive ones (0.12 vs. 0.42–0.45
+  for the other two candidates) — its weak τ is concentrated specifically in missing
+  price spikes, not spread evenly across the ranking.
+- Extending that daily breakdown to correlate τ/MAE/recall against realised economic
+  value (`scripts/analyze_daily.py`, pooled across 90 day×candidate observations and
+  broken out per candidate) found the daily relationship is much messier than the
+  aggregate one: no single metric — not even the top-4 recall that looks cleanest in
+  aggregate — reliably predicts one model's day-to-day economic outcome, and which
+  metric comes closest depends on the model and which economic target (savings vs.
+  baseline, or gap to oracle) is asked about. A leave-one-day-out check (excluding
+  Jan 15, LEAR's worst day) confirmed none of this was being driven by a single outlier.
+- This reframed the project's central claim from "rank correlation beats MAE" (which
+  the daily data doesn't cleanly support) to "no single metric — MAE, τ, or extreme-hour
+  recall — is a scalar, universal descriptor of forecast quality for a storage decision";
+  RQ1/RQ2 and README §5's Discussion were rewritten around this, and a research-quality
+  review pass caught several places where the README still overclaimed against this more
+  careful picture: "replicating" external papers' results (softened to "an independent
+  result consistent with"), a factual contradiction (the calm-regime discussion claiming
+  "little theoretical arbitrage value" when the oracle shows 75.5% was avoidable), and a
+  headline "60–75%" oracle-avoidable range that, checked against the actual numbers
+  (75.5% real-data, 36.6% synthetic, neither near 60%), turned out to have no real
+  source and was corrected to the one verified figure.
+- Two follow-on experiments closed out remaining open items from README's Limitations:
+  the CVaR sensitivity sweep (§4.4) was re-run with the current (fixed) forecaster —
+  with real market fundamentals now in the price model, the battery is profitable at
+  every CVaR weight tested, unlike the pre-fix version where risk-aversion was the
+  difference between a loss and a smaller loss. And a same-window ablation
+  (`configs/real_de_no_household_exog.yaml`, `household_price_exog: false`) tested
+  whether the household's own load/PV still add anything to price forecasting once
+  residual load (the true market fundamental) is available: MAE/τ/recall are unchanged
+  within noise, and realised economics are slightly *better* without them — the
+  household features aren't earning their complexity once residual load is present.
+
+## 15. Fixing the evaluation, and what it changed
+
+A robustness pass (confidence intervals, sensitivity to k, a value-of-the-stochastic-solution
+check) started by re-reading `pipeline._backtest()`. It turned up problems that the earlier
+conclusions depended on.
+
+**Leakage in the backtest.** The real data has no export-price column, so the backtest fell back to
+`0.75 × actual price` for the export price it fed to every candidate's LP. With a 5 kW battery on a
+household drawing under 1 kW, most discharge is exported, so every candidate was told the true price
+shape of the day it was being scored on. PV was also the realised value, not a forecast. The fix is
+structural: `_plan()` takes only the training history and the candidate's own forecast, so there is
+nothing else to leak. A regression test distorts every realised value on the final day and checks
+that the schedule does not move.
+
+**Other defects found on the way.**
+- Price forecasts and scenario prices were clipped at zero, although German day-ahead prices go
+  negative (Jan 15, 2018 does, at night). Now only load is clipped.
+- Scenario LPs let the import price move with the scenario while the export price stayed fixed, so
+  the scenarios hedged against a move the export leg never felt. Each scenario now exports at its own
+  price path. An intermediate run made this visible: the scenario layer looked harmful for gradient
+  boosting (−0.020 EUR/day, CI excluding zero) and the effect disappeared once the objective was
+  made consistent.
+- The model called "LEAR" had no asinh transform, so it is now called Lasso-AR, and a variant with
+  the transform (LEAR-style) is a separate candidate.
+
+**Conclusions that did not survive.**
+- "No metric predicts daily value, not even τ or recall" (§14) came from pooled correlations that
+  mix in day difficulty: volatile days raise both MAE and the gap to the oracle. With each day's
+  common level removed (day-demeaned, with block-bootstrap intervals), τ and top-4 recall track cost
+  clearly better than MAE in the volatile scenario and modestly better in the calm window.
+- "LEAR fails because a linear model cannot follow price spikes" (§7, §9) was a guess. The asinh
+  transform, the obvious fix for spikes, changed nothing. Predicted-peak hours showed the actual
+  pattern: the Lasso models put the day's maximum at 12–14h on 26 of 30 days, and the real maximum
+  is at 6–8h or 16–18h on 29 of 30. The cause is the calendar features (one sin/cos pair, so one
+  hump per day). Adding 24 hour dummies to Lasso-AR, and nothing else, moves top-4 recall from 0.12
+  to 0.49 and cost by 0.045 EUR/day (CI 0.027–0.063).
+- "The household's own load and PV are mildly counterproductive once residual load is present"
+  (§14) rested on point estimates. Paired intervals show no detectable effect.
+- "Every candidate is profitable in the high-volatility scenario" (§9) was partly a leak artifact.
+  Without the leak, two of five candidates lose money against no battery.
+- Cost figures moved as well: seasonal naive 2.87 → 2.97 EUR, gradient boosting 3.59 → 3.27,
+  Lasso-AR (then "LEAR") 4.53 → 4.70. The oracle and baseline are unchanged.
+
+**What held.** MAE still ranks the models almost backwards in the calm window (ρ = −0.90, n = 5),
+seasonal naive is still cheapest on the point estimate, and the recall asymmetry of the plain Lasso
+models is real (it is now explained, and fixed by the hour dummies).
+
+**Method notes.**
+- Validation forecasts are memoised across backtest origins (consecutive origins share 13 of 14
+  validation origins), about 15× faster with identical output (a test compares cached and uncached
+  forecasts). A 30-day, five-candidate run takes well under an hour instead of several.
+- Runs were paused for about 30 minutes when the laptop lid was closed (`pmset -g log` shows the
+  clamshell sleep). CPU time much lower than wall time is the tell; the monitor tool's 30-minute cap
+  is unrelated to that and only ends the watcher, not the run.
+- Removed as obsolete: `scripts/diagnose_tau.py` and `results/tau_scan_lear.json` (per-day τ is in
+  every run's stored records), `scripts/analyze_daily.py` (superseded by `scripts/robustness.py`), and
+  the old flat-schema counterfactual results file.

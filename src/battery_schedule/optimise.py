@@ -8,6 +8,10 @@ from .config import BatteryConfig
 def solve_schedule(scenarios: np.ndarray, pv_kw: np.ndarray, export_prices: np.ndarray, cfg: BatteryConfig, dt_h: float = 1.0, cvar_alpha: float = .9, cvar_weight: float = .2) -> pd.DataFrame:
     """Scenario LP with non-anticipative battery actions and CVaR of grid cost."""
     S,T,_ = scenarios.shape; n_action = 3*T  # charge, discharge, SOC
+    # Export price is either one path shared by all scenarios, shape (T,), or one per scenario, shape
+    # (S, T). When export earns a share of the market price, scenario s should export at its own
+    # price path, otherwise the scenarios hedge against a price move the export leg never feels.
+    export_prices = np.broadcast_to(np.asarray(export_prices, dtype=float), (S, T))
     # Scenario-specific imports, exports and total cost; global VaR and excess variables.
     imp0=n_action; exp0=imp0+S*T; cost0=exp0+S*T; z=cost0+S; u0=z+1; N=u0+S
     c=np.zeros(N); c[:T]=cfg.degradation_eur_per_kwh*dt_h; c[T:2*T]=cfg.degradation_eur_per_kwh*dt_h
@@ -40,9 +44,11 @@ def solve_schedule(scenarios: np.ndarray, pv_kw: np.ndarray, export_prices: np.n
         row=np.zeros(N); row[cost0+s]=1
         for t in range(T):
             row[imp0+s*T+t] -= scenarios[s,t,1]*dt_h
-            row[exp0+s*T+t] += export_prices[t]*dt_h
+            row[exp0+s*T+t] += export_prices[s,t]*dt_h
         Aeq.append(row); beq.append(0)
     Aub=[]; bub=[]
+    if cfg.max_cycles_per_day is not None:
+        row=np.zeros(N); row[T:2*T]=dt_h; Aub.append(row); bub.append(cfg.max_cycles_per_day*cfg.capacity_kwh)
     for s in range(S):
         # cost_s - z <= u_s
         row=np.zeros(N); row[cost0+s]=1; row[z]=-1; row[u0+s]=-1; Aub.append(row); bub.append(0)

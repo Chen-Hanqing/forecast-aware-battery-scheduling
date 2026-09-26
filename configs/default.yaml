@@ -5,7 +5,7 @@ data:
 forecast:
   validation_days: 14
   random_seed: 42
-  candidates: [seasonal_naive, gradient_boosting, lear]
+  candidates: [seasonal_naive, gradient_boosting, lasso_ar, lear_asinh, lasso_ar_hourly]
 scenarios:
   count: 80
   residual_block_steps: 4
